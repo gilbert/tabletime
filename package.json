@@ -1,0 +1,22 @@
+{
+  "name": "tabletime",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "git@github.com:gilbert/prolog-web-experiments.git",
+  "author": "Gilbert <gilbertbgarza@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "dev": "servor --reload"
+  },
+  "dependencies": {
+    "gun": "^0.2020.301",
+    "mithril": "^2.0.4",
+    "tau-prolog": "/Users/r16/p/src/tau-prolog"
+  },
+  "devDependencies": {
+    "esm": "^3.2.25",
+    "ospec": "^4.0.1",
+    "servor": "^3.2.0",
+    "snowpack": "^1.6.0"
+  }
+}
