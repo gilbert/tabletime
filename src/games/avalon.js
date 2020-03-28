@@ -5,28 +5,30 @@ exports.create = function() {
   const parsed = session.consult(`
 
 :- use_module(library(lists)).
-:- dynamic(player/1).
+:-use_module(library(js)).
+
 :- dynamic(game_stage/1).
 :- dynamic(assigned_role/2).
 :- dynamic(king/1).
 :- dynamic(nominee/1).
 :- dynamic(vote/2).
 
-:- op(995, xfx, if).
-:- op(995, xfx, else).
-:- op(995, xfx, unless).
-
-check_ready('This game only supports 5 to 10 players.') :-
+check_ready_start('This game only supports 5 to 10 players.') :-
   player_count(N),
   (N < 5; N > 10).
 
-role(civilian).
-role(merlin).
-role(percible).
+check_ready_start(Error) :-
+  player_count(PC),
+  count(config(roles, multi, _), RC),
+  PC =\\= RC,
+  atomic_list_concat(['Please choose exactly ', PC, ' roles.'], Error).
 
-role(minion).
-role(minion).
-role(mordrid).
+check_ready_start(Error) :-
+  player_count(PC),
+  required_evil(PC, Target),
+  count((config(roles, multi, Role), evil_role(Role)), EC),
+  EC =\\= Target,
+  atomic_list_concat(['Please choose exactly ', Target, ' evil roles.'], Error).
 
 game_stage(round(0, setup)).
 
@@ -67,8 +69,37 @@ new_round :-
   new_game_stage(round(N, nominate)).
 
 %
-% Data Rules
+% Config
 %
+good_role(R) :- member(R, [
+  merlin,
+  percival,
+  servant_1,
+  servant_2,
+  servant_3,
+  servant_4,
+  servant_5
+]).
+
+evil_role(R) :- member(R, [
+  assassin,
+  morgana,
+  mordred,
+  oberon,
+  minion_1,
+  minion_2,
+  minion_3
+]).
+
+config_option(roles, Role) :- good_role(Role) ; evil_role(Role).
+
+required_evil(5, 2).
+required_evil(6, 2).
+required_evil(7, 3).
+required_evil(8, 3).
+required_evil(9, 3).
+required_evil(10, 4).
+
 required_nominations(5, 1, 2).
 required_nominations(5, 2, 3).
 required_nominations(5, 3, 2).
@@ -100,6 +131,9 @@ required_nominations(10, 3, 4).
 required_nominations(10, 4, 5).
 required_nominations(10, 5, 5).
 
+%
+% Data Rules
+%
 fails_required(PlayerCount, 4, N) :- PlayerCount >= 7, N = 2.
 fails_required(_, _, 1).
 
@@ -116,17 +150,12 @@ player_count(N) :-
 %
 % Player Actions
 %
-nominate(Actor, Target) -->
-  {
-    game_stage(round(Round, nominate))
-  },
-  "You are not the king" unless current_king(Actor),
-  "You have already nominated that player" if nominee(Target),
-  {
-    nominations_req(Round, Req),
-    nomination_count(Current)
-  },
-  "You have aready issued all your nominations" unless Current < Req.
+validate_action(nominate, (Actor, _), 'You are not the king.') :- \\+ current_king(Actor).
+validate_action(nominate, (_, Target), 'Target is already nominated.') :- nominee(Target).
+validate_action(nominate, _, 'You are done nominating.') :-
+  nominations_req(Round, Req),
+  nomination_count(Current),
+  Current = Req.
 
 %
 % Helpers
@@ -138,11 +167,24 @@ count(Predicate, N) :-
   findall(_, Predicate, Solutions),
   length(Solutions, N).
 
-else(Cond, Message), [Result] --> [nil], !, { call(Cond) -> Result = nil ; Result = Message }.
-else(_, _), [NotNil] --> [NotNil].
+%
+% Tabletime Engine
+%
+:- dynamic(player/1).
+:- dynamic(config/3).
+:- dynamic(config_invalid/3).
 
-unless(Message, Cond) --> else(Cond, Message).
-if(Message, Cond) --> else(\+ Cond, Message).
+add_config(Name, Value) :-
+  config_option(Name, Value),
+  assertz(config(Name, multi, Value)).
+
+remove_config(Name, Value) :-
+  retract(config(Name, multi, Value)).
+
+set_config(Name, Value) :-
+  config_option(Name, Value),
+  retract(config(Name, single, _)),
+  assertz(config(Name, single, Value)).
 
 %
 % Tau-only stuff (written for SWI)
@@ -171,9 +213,38 @@ take(N, [H|T], [H|TT]):- succ(NN,N), take(NN, T, TT).
       const solutions = await session.queryAll(`player(P).`)
       return solutions.map(s => s.P)
     },
-    async checkReady() {
-      const solutions = await session.queryAll(`check_ready(Error).`)
-      return solutions.map(s => s.Error)
+
+    async getConfigOptions(name) {
+      const solutions = await session.queryAll(`config_option(${name}, Value).`)
+      return solutions.map(s => s.Value)
+    },
+    async getConfig(name) {
+      const solutions = await session.queryAll(`config(${name}, single, Value).`)
+      return solutions.map(s => s.Value)
+    },
+    async getMultiConfig(name) {
+      const solutions = await session.queryAll(`config(${name}, multi, Value).`)
+      return solutions.map(s => s.Value)
+    },
+
+    async addConfig(name, value) {
+      const errors = await session.queryAll(`
+        config_invalid(Error, ${name}, ${value}) -> true;
+        add_config(${name}, ${value}) -> true;
+        atomic_list_concat(['Invalid config ("', ${name}, '", "${value}")'], Error).
+      `)
+      return errors.map(s => s.Error).filter(x => x)
+    },
+
+    async checkReadyToStart() {
+      const errors = await session.queryAll(`check_ready_start(Error).`)
+      return errors.map(s => s.Error)
+    },
+
+    async debug(query) {
+      const result = await session.queryAll(query)
+      console.log(`?- ${query}\n`, result)
+      return result
     }
   }
 }
