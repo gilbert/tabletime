@@ -23,7 +23,7 @@ o.spec('Standard API', async function () {
 
   o('needs at least one player', async function () {
     const game = create()
-    const errors = await game.checkReady()
+    const errors = await game.checkReadyToStart()
     o(errors.some(e => e.match(/players/))).deepEquals(true)
   })
 })
@@ -78,11 +78,11 @@ o('validates adding a role', async function () {
 
 async function createFivePlayerGameNoRoles() {
   const game = create()
-  await game.addPlayer('one')
-  await game.addPlayer('two')
-  await game.addPlayer('three')
-  await game.addPlayer('four')
-  await game.addPlayer('five')
+  await game.addPlayer('p1')
+  await game.addPlayer('p2')
+  await game.addPlayer('p3')
+  await game.addPlayer('p4')
+  await game.addPlayer('p5')
   return game
 }
 
@@ -111,24 +111,41 @@ o('validates evil role count', async function () {
 })
 
 async function createFivePlayerGame() {
-  const game = createFivePlayerGameNoRoles()
+  const game = await createFivePlayerGameNoRoles()
+  await game.addConfig('test_mode', 'true')
+
   await game.addConfig('roles', 'merlin')
   await game.addConfig('roles', 'servant_1')
   await game.addConfig('roles', 'servant_2')
   await game.addConfig('roles', 'assassin')
   await game.addConfig('roles', 'minion_1')
+
+  expectNoErrors(await game.setConfig('random_seed', 'avalon test'))
+
+  o(await game.start()).equals(true)
+
   return game
 }
 
-o('begins the first round', async function() {
+o('starts the game correctly', async function() {
   const game = await createFivePlayerGame()
-  // TODO
-  // const state = await game.getState()
-  // o(state.hands.one.length).deepEquals(1)
-  // o(state.hands.two.length).deepEquals(1)
-  // o(state.hands.three.length).deepEquals(1)
-  // o(state.hands.four.length).deepEquals(1)
-  // o(state.hands.five.length).deepEquals(1)
+  const state = await game.getState()
+
+  function playerHand(player, role) {
+    return [
+      { zone: `${player}/assigned_role`, type: 'role', name: role, face: 'down' },
+      { zone: `${player}/hand`, type: 'vote', name: 'approve', face: 'down' },
+      { zone: `${player}/hand`, type: 'vote', name: 'reject', face: 'down' },
+    ]
+  }
+
+  o(state.cards).deepEquals([
+    ...playerHand('p1', 'servant_1'),
+    ...playerHand('p2', 'merlin'),
+    ...playerHand('p3', 'assassin'),
+    ...playerHand('p4', 'minion_1'),
+    ...playerHand('p5', 'servant_2'),
+  ])
 })
 
 //

@@ -1,14 +1,14 @@
-const {createPrologInstance} = require('../prolog')
+const {createPrologInstance, escapeQueryTemplate} = require('../prolog')
 
 exports.create = function() {
   const session = createPrologInstance()
   const parsed = session.consult(`
 
+:- use_module(library(random)).
 :- use_module(library(lists)).
-:-use_module(library(js)).
+:- use_module(library(js)).
 
-:- dynamic(game_stage/1).
-:- dynamic(assigned_role/2).
+:- dynamic(phase/1).
 :- dynamic(king/1).
 :- dynamic(nominee/1).
 :- dynamic(vote/2).
@@ -30,13 +30,25 @@ check_ready_start(Error) :-
   EC =\\= Target,
   atomic_list_concat(['Please choose exactly ', Target, ' evil roles.'], Error).
 
-game_stage(round(0, setup)).
+start_game :-
+  (config(random_seed, single, S) -> set_random(S); true),
+  set_phase(round(0, setup)),
+  assign_role_cards,
+  assign_other_starting_cards,
+  assign_next_king,
+  new_round.
 
-new_game_stage(S) :- retractall(game_stage(_)), assertz(game_stage(S)).
+set_phase(S) :- retractall(phase(_)), assertz(phase(S)).
+
+assign_other_starting_cards :-
+  forall(player(P), (
+    assertz( card(vote, approve, down, [P, hand]) ),
+    assertz( card(vote, reject, down, [P, hand]) )
+  )).
 
 random_role_pairings(Pairs) :-
   findall(P, player(P), Players),
-  findall(R, role(R), Rs0),
+  findall(R, config(roles, multi, R), Rs0),
   random_permutation(Rs0, Rs1),
 
   length(Players, PlayerCount),
@@ -44,11 +56,14 @@ random_role_pairings(Pairs) :-
 
   zip(Players, Roles, Pairs).
 
-assign_roles :-
+assign_role_cards :-
   random_role_pairings(Pairs),
-  forall(member([P,R], Pairs), assertz(assigned_role(P,R))).
+  forall(
+    member([P,R], Pairs),
+    assertz( card(role, R, down, [P, assigned_role]) )
+  ).
 
-assign_next_king :- player(P), \+ king(P), assertz(king(P)), !.
+assign_next_king :- player(P), \\+ king(P), asserta(king(P)), !.
 assign_next_king :-
   once(player(_)), % Ensure there is at least one player so we don't infinite loop.
   retractall(king(_)),
@@ -56,20 +71,21 @@ assign_next_king :-
 
 current_king(P) :- once(king(P)).
 
-start_game :-
-  assign_roles,
-  assign_next_king,
-  new_round.
-
 new_round :-
-  game_stage(round(N0, _)),
+  phase(round(N0, _)),
   retractall(vote(_,_)),
   retractall(quest_nominee(_)),
   N is N0 + 1,
-  new_game_stage(round(N, nominate)).
+  set_phase(round(N, nominate)).
 
 %
 % Config
+%
+config_option(roles, Role) :- good_role(Role) ; evil_role(Role).
+config_option(role_permutation, Roles) :- member(R, Roles), config_option(roles, R).
+
+%
+% Static Data
 %
 good_role(R) :- member(R, [
   merlin,
@@ -90,8 +106,6 @@ evil_role(R) :- member(R, [
   minion_2,
   minion_3
 ]).
-
-config_option(roles, Role) :- good_role(Role) ; evil_role(Role).
 
 required_evil(5, 2).
 required_evil(6, 2).
@@ -153,6 +167,7 @@ player_count(N) :-
 validate_action(nominate, (Actor, _), 'You are not the king.') :- \\+ current_king(Actor).
 validate_action(nominate, (_, Target), 'Target is already nominated.') :- nominee(Target).
 validate_action(nominate, _, 'You are done nominating.') :-
+  phase(round(Round, _)),
   nominations_req(Round, Req),
   nomination_count(Current),
   Current = Req.
@@ -171,8 +186,14 @@ count(Predicate, N) :-
 % Tabletime Engine
 %
 :- dynamic(player/1).
+:- dynamic(playing_as/2).
 :- dynamic(config/3).
 :- dynamic(config_invalid/3).
+:- dynamic(status/3).
+%% card(CardType, Name, CardFace, ZonePath).
+:- dynamic(card/4).
+
+config_option(random_seed, S) :- atomic(S).
 
 add_config(Name, Value) :-
   config_option(Name, Value),
@@ -183,7 +204,7 @@ remove_config(Name, Value) :-
 
 set_config(Name, Value) :-
   config_option(Name, Value),
-  retract(config(Name, single, _)),
+  retractall(config(Name, single, _)),
   assertz(config(Name, single, Value)).
 
 %
@@ -204,47 +225,104 @@ take(N, [H|T], [H|TT]):- succ(NN,N), take(NN, T, TT).
 
   return {
     async addPlayer(player) {
-      await session.queryAll(`assertz(player(${player})).`)
+      await session.query_all`assertz(player(${player})).`
     },
     async removePlayer(player) {
-      await session.queryAll(`retract(player(${player})).`)
+      await session.query_all`retract(player(${player})).`
     },
     async getPlayers() {
-      const solutions = await session.queryAll(`player(P).`)
+      const solutions = await session.query_all`player(P).`
       return solutions.map(s => s.P)
     },
 
     async getConfigOptions(name) {
-      const solutions = await session.queryAll(`config_option(${name}, Value).`)
+      const solutions = await session.query_all`config_option(${name}, Value).`
       return solutions.map(s => s.Value)
     },
     async getConfig(name) {
-      const solutions = await session.queryAll(`config(${name}, single, Value).`)
+      const solutions = await session.query_all`config(${name}, single, Value).`
       return solutions.map(s => s.Value)
     },
     async getMultiConfig(name) {
-      const solutions = await session.queryAll(`config(${name}, multi, Value).`)
+      const solutions = await session.query_all`config(${name}, multi, Value).`
       return solutions.map(s => s.Value)
     },
 
     async addConfig(name, value) {
-      const errors = await session.queryAll(`
+      const errors = await session.query_all`
         config_invalid(Error, ${name}, ${value}) -> true;
         add_config(${name}, ${value}) -> true;
-        atomic_list_concat(['Invalid config ("', ${name}, '", "${value}")'], Error).
-      `)
+        atomic_list_concat(['Invalid config (', ${name}, ', ', ${value}, ')'], Error).
+      `
+      return errors.map(s => s.Error).filter(x => x)
+    },
+
+    async setConfig(name, value) {
+      const errors = await session.query_all`
+        config_invalid(Error, ${name}, ${value}) -> true;
+        set_config(${name}, ${value}) -> true;
+        atomic_list_concat(['Invalid config (', ${name}, ', ', ${value}, ')'], Error).
+      `
       return errors.map(s => s.Error).filter(x => x)
     },
 
     async checkReadyToStart() {
-      const errors = await session.queryAll(`check_ready_start(Error).`)
+      const errors = await session.query_all`check_ready_start(Error).`
       return errors.map(s => s.Error)
     },
 
-    async debug(query) {
-      const result = await session.queryAll(query)
+    async start() {
+      const solutions = await session.query_all`start_game.`
+      if (solutions.length > 1) {
+        console.warn(`[game.start] Warning: Multiple solutions`, solutions)
+      }
+      return solutions.length > 0
+    },
+
+    async getState() {
+      const cards = (await session.query_all`
+        card(Type, Name, Face, Path).
+      `).map(row => {
+        return {
+          zone: row.Path.join('/'),
+          type: row.Type,
+          name: row.Name,
+          face: row.Face,
+        }
+      })
+
+      cards.sort(byCardContent)
+
+      return { cards }
+    },
+
+    async debug(strings, ...values) {
+      const result = await session.query_all(strings, ...values)
+
+      const query = escapeQueryTemplate(strings, values)
       console.log(`?- ${query}\n`, result)
       return result
     }
+  }
+}
+
+function byCardContent(a,b) {
+  return (a.zone+a.type+a.name+a.face).localeCompare(b.zone+b.type+b.name+b.face)
+}
+
+exports.playerBoardSpec = {
+  piles: {
+    assigned_role: {
+      pos: [0,0],
+      size: [200, 300],
+    },
+    vote: {
+      pos: [200, 0],
+      size: [200, 300],
+    },
+    quest: {
+      pos: [400, 0],
+      size: [200, 300],
+    },
   }
 }
