@@ -1,3 +1,5 @@
-Experiment in using SWI Prolog for web development. One day it'll be a multiplayer board game platform.
+## TableTime
 
-See devlog here: https://devlog.at/d/FB1Tk1KwvuVtKixgy6nV
+An online multiplayer board game platform. Written in Prolog!
+
+Coming soon.
