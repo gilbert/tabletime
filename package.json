@@ -6,7 +6,8 @@
   "author": "Gilbert <gilbertbgarza@gmail.com>",
   "license": "MIT",
   "scripts": {
-    "dev": "servor --reload"
+    "dev": "servor --reload",
+    "test": "ospec"
   },
   "dependencies": {
     "gun": "^0.2020.301",
