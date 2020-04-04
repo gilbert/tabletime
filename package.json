@@ -7,7 +7,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "servor --reload",
-    "test": "ospec"
+    "test": "ospec src/games/**/*.test.js"
   },
   "dependencies": {
     "gun": "^0.2020.301",

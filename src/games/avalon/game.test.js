@@ -1,5 +1,5 @@
 const o = require("ospec")
-const {create} = require('../src/games/avalon')
+const {create} = require('./game')
 
 o.spec('Standard API', async function () {
   o('adds players', async function() {
@@ -127,7 +127,7 @@ async function createFivePlayerGame() {
   return game
 }
 
-o('starts the game correctly', async function() {
+o('runs through a game', async function() {
   const game = await createFivePlayerGame()
   const state = await game.getState()
 

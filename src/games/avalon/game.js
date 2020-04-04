@@ -1,4 +1,4 @@
-const {createPrologInstance, escapeQueryTemplate, pl} = require('../prolog')
+const {createPrologInstance, escapeQueryTemplate, pl} = require('../../prolog')
 
 exports.create = function() {
   const session = createPrologInstance()
