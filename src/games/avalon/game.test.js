@@ -112,7 +112,6 @@ o('validates evil role count', async function () {
 
 async function createFivePlayerGame() {
   const game = await createFivePlayerGameNoRoles()
-  await game.addConfig('test_mode', 'true')
 
   await game.addConfig('roles', 'merlin')
   await game.addConfig('roles', 'servant_1')
