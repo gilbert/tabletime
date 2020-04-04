@@ -2412,8 +2412,9 @@ tar@^6.0.1:
     mkdirp "^1.0.3"
     yallist "^4.0.0"
 
-"tau-prolog@file:../src/tau-prolog":
+tau-prolog@gilbert/tau-prolog:
   version "0.2.81"
+  resolved "https://codeload.github.com/gilbert/tau-prolog/tar.gz/492109e4affd332ca2ad3d562244ed4eaac7f863"
   dependencies:
     qunit "^2.8.0"
     readline-sync "1.4.9"

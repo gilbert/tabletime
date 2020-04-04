@@ -12,7 +12,7 @@
   "dependencies": {
     "gun": "^0.2020.301",
     "mithril": "^2.0.4",
-    "tau-prolog": "/Users/r16/p/src/tau-prolog"
+    "tau-prolog": "gilbert/tau-prolog"
   },
   "devDependencies": {
     "esm": "^3.2.25",
