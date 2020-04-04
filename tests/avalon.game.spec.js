@@ -120,7 +120,7 @@ async function createFivePlayerGame() {
   await game.addConfig('roles', 'assassin')
   await game.addConfig('roles', 'minion_1')
 
-  expectNoErrors(await game.setConfig('random_seed', 'avalon test'))
+  expectNoErrors(await game.setConfig('random_seed', 'ospec test seed'))
 
   o(await game.start()).equals(true)
 
@@ -133,18 +133,28 @@ o('starts the game correctly', async function() {
 
   function playerHand(player, role) {
     return [
-      { zone: `${player}/assigned_role`, type: 'role', name: role, face: 'down' },
-      { zone: `${player}/hand`, type: 'vote', name: 'approve', face: 'down' },
-      { zone: `${player}/hand`, type: 'vote', name: 'reject', face: 'down' },
+      { zone: `player/${player}/assigned_role`, type: 'role', name: role, face: 'down' },
+      { zone: `player/${player}/hand`, type: 'vote', name: 'approve', face: 'down' },
+      { zone: `player/${player}/hand`, type: 'vote', name: 'reject', face: 'down' },
     ]
   }
 
-  o(state.cards).deepEquals([
-    ...playerHand('p1', 'servant_1'),
-    ...playerHand('p2', 'merlin'),
-    ...playerHand('p3', 'assassin'),
-    ...playerHand('p4', 'minion_1'),
-    ...playerHand('p5', 'servant_2'),
+  o(state.cards.map(noId)).deepEquals([
+    ...playerHand('p1', 'assassin'),
+    ...playerHand('p2', 'minion_1'),
+    ...playerHand('p3', 'servant_2'),
+    ...playerHand('p4', 'servant_1'),
+    ...playerHand('p5', 'merlin'),
+    ...times(5, { zone: 'shared/standby/mission_tokens', type: 'mission', face: 'up' }),
+    ...times(3, { zone: 'shared/standby/quest_cards', type: 'quest', name: 'fail', face: 'up' }),
+    ...times(3, { zone: 'shared/standby/quest_cards', type: 'quest', name: 'success', face: 'up' }),
+  ])
+
+  o(state.tokens.map(noId)).deepEquals([
+    { zone: 'player/p1/status', type: 'king' },
+    ...times(2, { zone: 'player/p1/unused_nominations', type: 'nomination' }),
+    { zone: 'shared/board/reject_count/0', type: 'reject' },
+    ...times(1, { zone: 'shared/standby/nomination_tokens', type: 'nomination' }),
   ])
 })
 
@@ -163,4 +173,10 @@ async function expectReadyError(regex, game, expectToBePresent=true) {
 }
 function expectNoErrors(errors) {
   o(errors).deepEquals([])
+}
+function noId({id, ...rest}) {
+  return rest
+}
+function times(n, obj) {
+  return Array(n).fill(obj)
 }

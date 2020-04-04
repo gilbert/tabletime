@@ -34,16 +34,33 @@ start_game :-
   (config(random_seed, single, S) -> set_random(S); true),
   set_phase(round(0, setup)),
   assign_role_cards,
-  assign_other_starting_cards,
-  assign_next_king,
+  setup_board,
+  create_vote_cards,
   new_round.
 
 set_phase(S) :- retractall(phase(_)), assertz(phase(S)).
 
-assign_other_starting_cards :-
-  forall(player(P), (
-    assertz( card(vote, approve, down, [P, hand]) ),
-    assertz( card(vote, reject, down, [P, hand]) )
+setup_board :-
+  player_count(PC),
+  new_token(reject, [shared, board, reject_count, 0]),
+  new_token(king, [shared, standby, king]),
+
+  forall( between(1, 5, _), (
+    new_card(mission, 'NONE', up, [shared, standby, mission_tokens])
+  )),
+
+  findall(Sizes, party_size(PC, _, Sizes), Sizes),
+  max_list(Sizes, LargestPartySize),
+  forall( between(1, LargestPartySize, _), (
+    new_card(quest, success, up, [shared, standby, quest_cards]),
+    new_card(quest, fail, up, [shared, standby, quest_cards]),
+    new_token(nomination, [shared, standby, nomination_tokens])
+  )).
+
+create_vote_cards :-
+  forall( player(P), (
+    new_card(vote, approve, down, [player, P, hand]),
+    new_card(vote, reject, down, [player, P, hand])
   )).
 
 random_role_pairings(Pairs) :-
@@ -60,10 +77,21 @@ assign_role_cards :-
   random_role_pairings(Pairs),
   forall(
     member([P,R], Pairs),
-    assertz( card(role, R, down, [P, assigned_role]) )
+    new_card(role, R, down, [player, P, assigned_role])
   ).
 
-assign_next_king :- player(P), \\+ king(P), asserta(king(P)), !.
+assign_next_king :-
+  % Grab the next player that hasn't been king this goaround
+  player(Player), \\+ king(Player), !,
+
+  % Mark them as having been king
+  asserta(king(Player)),
+
+  % Hand them the token
+  retract( token(king, _, Id) ),
+  assertz( token(king, [player, Player, status], Id) ).
+
+% This case occurs when all players have been king
 assign_next_king :-
   once(player(_)), % Ensure there is at least one player so we don't infinite loop.
   retractall(king(_)),
@@ -73,10 +101,34 @@ current_king(P) :- once(king(P)).
 
 new_round :-
   phase(round(N0, _)),
-  retractall(vote(_,_)),
-  retractall(quest_nominee(_)),
+  pickup_vote_cards,
+  assign_next_king,
   N is N0 + 1,
+  set_nomination_tokens(N),
   set_phase(round(N, nominate)).
+
+pickup_vote_cards :-
+  forall( card(vote, Decision, _, [player, Player, vote], Id), (
+    retract( card(_, _, _, _, Id) ),
+    assertz( card(vote, Decision, down, [player, Player, hand], Id) )
+  )).
+
+set_nomination_tokens(Round) :-
+  player_count(PC),
+  current_king(King),
+
+  % Take back all tokens from previously nominated players to shared area
+  forall( token(nomination, [player, _, status], Id), (
+    retract( token(_, _, Id) ),
+    assertz( token(nomination, [shared, standby, nomination_tokens], Id) )
+  )),
+
+  % Give the king a number of tokens equal to the current round's party size
+  party_size(PC, Round, PartySize),
+  forall( between(1, PartySize, _), (
+    once(retract( token(nomination, [shared, standby, nomination_tokens], Id) )),
+    assertz( token(nomination, [player, King, unused_nominations], Id) )
+  )).
 
 %
 % Config
@@ -107,6 +159,7 @@ evil_role(R) :- member(R, [
   minion_3
 ]).
 
+% required_evil(PlayerCount, RequiredEvil)
 required_evil(5, 2).
 required_evil(6, 2).
 required_evil(7, 3).
@@ -114,6 +167,7 @@ required_evil(8, 3).
 required_evil(9, 3).
 required_evil(10, 4).
 
+% party_size(PlayerCount, Round, QuestPartySize)
 party_size(5, 1, 2).
 party_size(5, 2, 3).
 party_size(5, 3, 2).
@@ -162,6 +216,11 @@ player_count(N) :-
   count(player(_), N).
 
 %
+% Access Rules
+%
+zone_visible(Player, [player, Player, hand]).
+
+%
 % Player Actions
 %
 validate_action(nominate, (Actor, _), 'You are not the king.') :- \\+ current_king(Actor).
@@ -188,8 +247,30 @@ count(Predicate, N) :-
 :- dynamic(player/1).
 :- dynamic(config/3).
 :- dynamic(config_invalid/3).
-%% card(CardType, Name, CardFace, ZonePath).
-:- dynamic(card/4).
+:- dynamic(object_id/1).
+%% card(Type, Name, CardFace, ZonePath, Id).
+:- dynamic(card/5).
+%% token(Type, ZonePath, Id).
+:- dynamic(token/3).
+
+% zone_visible(Onlooker, Zone).
+zone_visible(_, [shared, _]).
+zone_visible(_, _) :- false.
+
+object_id(100).
+new_object_id(Id) :-
+  object_id(Id),
+  NextId is Id + 1,
+  retractall( object_id(_) ),
+  assertz( object_id(NextId) ).
+
+new_card(Type, Name, CardFace, ZonePath) :-
+  new_object_id(Id),
+  assertz(card(Type, Name, CardFace, ZonePath, Id)).
+
+new_token(Type, ZonePath) :-
+  new_object_id(Id),
+  assertz(token(Type, ZonePath, Id)).
 
 config_option(random_seed, S) :- atomic(S).
 
@@ -270,19 +351,35 @@ set_config(Name, Value) :-
 
     async getState() {
       const cards = (await session.query_all`
-        card(Type, Name, Face, Path).
+        card(Type, Name, Face, Path, Id).
       `).map(row => {
-        return {
-          zone: row.Path.join('/'),
+        const card = {
+          id:   row.Id,
           type: row.Type,
-          name: row.Name,
           face: row.Face,
+          zone: row.Path.join('/'),
         }
+        if (row.Name !== 'NONE') {
+          card.name = row.Name
+        }
+        return card
       })
 
       cards.sort(byCardContent)
 
-      return { cards }
+      const tokens = (await session.query_all`
+        token(Type, Path, Id).
+      `).map(row => {
+        return {
+          id:   row.Id,
+          type: row.Type,
+          zone: row.Path.join('/'),
+        }
+      })
+
+      tokens.sort(byTokenContent)
+
+      return { cards, tokens }
     },
 
     async debug(strings, ...values) {
@@ -297,6 +394,9 @@ set_config(Name, Value) :-
 
 function byCardContent(a,b) {
   return (a.zone+a.type+a.name+a.face).localeCompare(b.zone+b.type+b.name+b.face)
+}
+function byTokenContent(a,b) {
+  return (a.zone+a.type).localeCompare(b.zone+b.type)
 }
 
 exports.playerBoardSpec = {

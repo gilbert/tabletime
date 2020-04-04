@@ -17,7 +17,7 @@ exports.escapeQueryTemplate = pl.utils.escapeQueryTemplate
 // Seeded random logic
 //
 function createRandom(seed) {
-  var seed = xmur3("apples");
+  var seed = xmur3(seed);
   return sfc32(seed(), seed(), seed(), seed());
 }
 
