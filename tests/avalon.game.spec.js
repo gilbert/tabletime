@@ -156,6 +156,16 @@ o('starts the game correctly', async function() {
     { zone: 'shared/board/reject_count/0', type: 'reject' },
     ...times(1, { zone: 'shared/standby/nomination_tokens', type: 'nomination' }),
   ])
+
+  o(await game.getAvailableActions('p2')).deepEquals([])
+  o(await game.getAvailableActions('p1')).deepEquals(['nominate'])
+  o(await game.getAvailableActions('p1', 'nominate')).deepEquals([114, 117])
+  o(await game.getAvailableActions('p1', 'nominate', [114])).deepEquals(['p1', 'p2', 'p3', 'p4', 'p5'])
+
+  o(await game.act('p1', 'nominate', [114, 'p2'])).equals(true)
+
+  o(await game.getAvailableActions('p1', 'nominate')).deepEquals([117])
+  o(await game.getAvailableActions('p1', 'nominate', [117])).deepEquals(['p1', 'p3', 'p4', 'p5'])
 })
 
 //

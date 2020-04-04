@@ -13,6 +13,8 @@ exports.createPrologInstance = function createPrologInstance() {
 
 exports.escapeQueryTemplate = pl.utils.escapeQueryTemplate
 
+exports.pl = pl
+
 //
 // Seeded random logic
 //

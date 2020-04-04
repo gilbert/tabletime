@@ -1,9 +1,8 @@
-const {createPrologInstance, escapeQueryTemplate} = require('../prolog')
+const {createPrologInstance, escapeQueryTemplate, pl} = require('../prolog')
 
 exports.create = function() {
   const session = createPrologInstance()
   const parsed = session.consult(`
-
 :- use_module(library(random)).
 :- use_module(library(lists)).
 :- use_module(library(js)).
@@ -205,31 +204,51 @@ party_size(10, 5, 5).
 fails_required(PlayerCount, 4, 2) :- PlayerCount >= 7.
 fails_required(_, _, 1).
 
-required_nominations(Round, N) :-
-  player_count(PC),
-  required_nominations(PC, Round, N).
-
-nomination_count(N) :-
-  count(nominee(_), N).
-
 player_count(N) :-
   count(player(_), N).
 
 %
 % Access Rules
 %
-zone_visible(Player, [player, Player, hand]).
+zone_hidden(P1, [player, P2, hand]) :- P1 \\== P2.
 
 %
 % Player Actions
 %
-validate_action(nominate, (Actor, _), 'You are not the king.') :- \\+ current_king(Actor).
-validate_action(nominate, (_, Target), 'Target is already nominated.') :- nominee(Target).
-validate_action(nominate, _, 'You are done nominating.') :-
-  phase(round(Round, _)),
-  required_nominations(Round, Req),
-  nomination_count(Current),
-  Current = Req.
+action_length(nominate, 2).
+action_length(vote, 2).
+
+available_action(Actor, nominate, []) :-
+  phase(round(_, nominate)),
+  current_king(Actor).
+
+available_action(Actor, nominate, [Source]) :-
+  available_action(Actor, nominate, []),
+  token(nomination, [player, Actor, unused_nominations], Source).
+
+available_action(Actor, nominate, [Source, Target]) :-
+  available_action(Actor, nominate, [Source]),
+  player(Target),
+  \\+ token(nomination, [player, Target, status], _).
+
+act(nominate, _, [Source, Target]) :-
+  move_token(Source, [player, Target, status]).
+
+
+available_action(Actor, vote, []) :-
+  phase(round(_, vote)),
+  \\+ card(vote, _, [player, Actor, vote], _).
+
+available_action(Actor, vote, [Source]) :-
+  card(vote, _, [player, Actor, hand], Source).
+
+available_action(Actor, vote, [Source, Target]) :-
+  available_action(Actor, vote, [Source]),
+  Target = [player, Actor, vote].
+
+act(vote, _, [Source, Target]) :-
+  move_token(Source, Target).
+
 
 %
 % Helpers
@@ -253,9 +272,18 @@ count(Predicate, N) :-
 %% token(Type, ZonePath, Id).
 :- dynamic(token/3).
 
-% zone_visible(Onlooker, Zone).
-zone_visible(_, [shared, _]).
-zone_visible(_, _) :- false.
+% zone_hidden(Onlooker, Zone).
+zone_hidden(_, _) :- false.
+
+try_act(Actor, Action, Args) :-
+  action_length(Action, ReqLen),
+  length(Args, ReqLen),
+  available_action(Actor, Action, Args),
+  act(Action, Actor, Args).
+
+cannot_act(_, _, _, _) :- false.
+act(_, _, _) :- false.
+action_length(_) :- false.
 
 object_id(100).
 new_object_id(Id) :-
@@ -268,9 +296,17 @@ new_card(Type, Name, CardFace, ZonePath) :-
   new_object_id(Id),
   assertz(card(Type, Name, CardFace, ZonePath, Id)).
 
+move_card(Id, NewZone, Face) :-
+  retract( card(Type, Name, _, _, Id) ),
+  assertz( card(Type, Name, Face, NewZone, Id) ).
+
 new_token(Type, ZonePath) :-
   new_object_id(Id),
   assertz(token(Type, ZonePath, Id)).
+
+move_token(Id, NewZone) :-
+  retract( token(Type, _, Id) ),
+  assertz( token(Type, NewZone, Id) ).
 
 config_option(random_seed, S) :- atomic(S).
 
@@ -288,7 +324,7 @@ set_config(Name, Value) :-
   `)
 
   if (parsed !== true) {
-    throw new Error(parsed)
+    throw new Error(parsed.args[0])
   }
 
   session.get_warnings().forEach(msg => console.warn(msg.toString()))
@@ -380,6 +416,37 @@ set_config(Name, Value) :-
       tokens.sort(byTokenContent)
 
       return { cards, tokens }
+    },
+
+    async getAvailableActions(player, action=null, args=[]) {
+      let actionQuery = action
+      if (action) {
+        args.push(pl.escape.var('Target'))
+      }
+      else {
+        actionQuery = pl.escape.var('Action')
+      }
+      const solutions = await session.query_all`
+        available_action(${player}, ${actionQuery}, ${args}).
+      `
+      if (action) {
+        return solutions.map(s => s.Target)
+      }
+      else {
+        return solutions.map(s => s.Action)
+      }
+    },
+
+    async act(player, action, args) {
+      const successes = await session.query_all`
+        try_act(${player}, ${action}, ${args}).
+      `
+      if (successes.length > 1) {
+        console.warn(`[game.act] Warning: Multiple solutions for (${
+          player
+        }, ${action}, [${args.join(', ')}])`, successes)
+      }
+      return successes.length > 0
     },
 
     async debug(strings, ...values) {
