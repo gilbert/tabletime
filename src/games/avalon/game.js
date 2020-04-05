@@ -51,8 +51,8 @@ setup_board :-
   findall(Sizes, party_size(PC, _, Sizes), Sizes),
   max_list(Sizes, LargestPartySize),
   forall( between(1, LargestPartySize, _), (
-    new_card(quest, success, up, [shared, standby, quest_cards]),
-    new_card(quest, fail, up, [shared, standby, quest_cards]),
+    new_card(quest, success, down, [shared, standby, quest_cards]),
+    new_card(quest, fail, down, [shared, standby, quest_cards]),
     new_token(nomination, [shared, standby, nomination_tokens])
   )).
 
@@ -210,13 +210,34 @@ player_count(N) :-
 %
 % Access Rules
 %
+
+%
+% draggable/2 SHOULD validate permissions.
+% This provides better UX as the user can't drag something they can't interact with.
+%
+% In constract, droppable/5 SHOULD NOT validate permissions.
+% It only constructs an action; available_action/3 will validate elsewhere.
+%
+draggable(Actor, Id) :-
+  phase(round(_, nominate)),
+  current_king(Actor),
+  token(nomination, [player, Actor, unused_nominations], Id).
+
+droppable(_, DraggableId, DropZone, nominate, [DraggableId, Target]) :-
+  token(nomination, _, DraggableId),
+  player(Target),
+  DropZone = [player, Target, status],
+  \\+ token(nomination, DropZone, _).
+
+
+
 zone_hidden(P1, [player, P2, hand]) :- P1 \\== P2.
 
 %
 % Player Actions
 %
-action_length(nominate, 2).
-action_length(vote, 2).
+action(nominate, 2, drag).
+action(vote, 2, drag).
 
 available_action(Actor, nominate, []) :-
   phase(round(_, nominate)),
@@ -276,14 +297,17 @@ count(Predicate, N) :-
 zone_hidden(_, _) :- false.
 
 try_act(Actor, Action, Args) :-
-  action_length(Action, ReqLen),
+  action(Action, ReqLen, _),
   length(Args, ReqLen),
   available_action(Actor, Action, Args),
   act(Action, Actor, Args).
 
-cannot_act(_, _, _, _) :- false.
+% act(Actor, Action, Args)
 act(_, _, _) :- false.
-action_length(_) :- false.
+action(_, _, _) :- false.
+
+% draggable(Actor, Id)
+draggable(_, _) :- false.
 
 object_id(100).
 new_object_id(Id) :-
@@ -387,13 +411,13 @@ set_config(Name, Value) :-
 
     async getState() {
       const cards = (await session.query_all`
-        card(Type, Name, Face, Path, Id).
+        card(Type, Name, Face, Zone, Id).
       `).map(row => {
         const card = {
           id:   row.Id,
           type: row.Type,
           face: row.Face,
-          zone: row.Path.join('/'),
+          zone: row.Zone.join('/'),
         }
         if (row.Name !== 'NONE') {
           card.name = row.Name
@@ -404,12 +428,12 @@ set_config(Name, Value) :-
       cards.sort(byCardContent)
 
       const tokens = (await session.query_all`
-        token(Type, Path, Id).
+        token(Type, Zone, Id).
       `).map(row => {
         return {
           id:   row.Id,
           type: row.Type,
-          zone: row.Path.join('/'),
+          zone: row.Zone.join('/'),
         }
       })
 
@@ -418,23 +442,44 @@ set_config(Name, Value) :-
       return { cards, tokens }
     },
 
-    async getAvailableActions(player, action=null, args=[]) {
-      let actionQuery = action
+    async getAvailableActions(player, action=null, args) {
+      args = (args || []).slice()
       if (action) {
         args.push(pl.escape.var('Target'))
+        return (await session.query_all`
+          available_action(${player}, ${action}, ${args}),
+          action(${action}, _, Type).
+        `)
+          .map(row => row.Target)
       }
       else {
-        actionQuery = pl.escape.var('Action')
+        return (await session.query_all`
+          available_action(${player}, Action, ${args}),
+          action(Action, _, Type).
+        `)
+          .map(row => ({ name: row.Action, type: row.Type }))
       }
+    },
+
+    async getDraggables(player) {
+      const solutions = await session.query_all`draggable(${player}, Id).`
+      const result = {}
+      solutions.forEach(row => {
+        result[row.Id] = true
+      })
+      return result
+    },
+
+    async getDroppables(player, draggableId) {
+      // TODO: Consider dragging onto other cards / tokens
       const solutions = await session.query_all`
-        available_action(${player}, ${actionQuery}, ${args}).
+        droppable(${player}, ${draggableId}, DropZone, Action, Args).
       `
-      if (action) {
-        return solutions.map(s => s.Target)
-      }
-      else {
-        return solutions.map(s => s.Action)
-      }
+      const zones = {}
+      solutions.forEach(row => {
+        zones[row.DropZone.join('/')] = [row.Action, row.Args]
+      })
+      return { zones }
     },
 
     async act(player, action, args) {

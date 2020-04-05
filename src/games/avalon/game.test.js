@@ -145,8 +145,8 @@ o('runs through a game', async function() {
     ...playerHand('p4', 'servant_1'),
     ...playerHand('p5', 'merlin'),
     ...times(5, { zone: 'shared/standby/mission_tokens', type: 'mission', face: 'up' }),
-    ...times(3, { zone: 'shared/standby/quest_cards', type: 'quest', name: 'fail', face: 'up' }),
-    ...times(3, { zone: 'shared/standby/quest_cards', type: 'quest', name: 'success', face: 'up' }),
+    ...times(3, { zone: 'shared/standby/quest_cards', type: 'quest', name: 'fail', face: 'down' }),
+    ...times(3, { zone: 'shared/standby/quest_cards', type: 'quest', name: 'success', face: 'down' }),
   ])
 
   o(state.tokens.map(noId)).deepEquals([
@@ -156,15 +156,35 @@ o('runs through a game', async function() {
     ...times(1, { zone: 'shared/standby/nomination_tokens', type: 'nomination' }),
   ])
 
+  o(await game.getDraggables('p2')).deepEquals({})
   o(await game.getAvailableActions('p2')).deepEquals([])
-  o(await game.getAvailableActions('p1')).deepEquals(['nominate'])
-  o(await game.getAvailableActions('p1', 'nominate')).deepEquals([114, 117])
-  o(await game.getAvailableActions('p1', 'nominate', [114])).deepEquals(['p1', 'p2', 'p3', 'p4', 'p5'])
+
+  o(await game.getDraggables('p1')).deepEquals({ 114: true, 117: true })
+  o(await game.getDroppables('p1', 114)).deepEquals({
+    zones: {
+      'player/p1/status': ['nominate', [114, 'p1']],
+      'player/p2/status': ['nominate', [114, 'p2']],
+      'player/p3/status': ['nominate', [114, 'p3']],
+      'player/p4/status': ['nominate', [114, 'p4']],
+      'player/p5/status': ['nominate', [114, 'p5']],
+    }
+  })
+  o(await game.getAvailableActions('p1')).deepEquals([
+    { name: 'nominate', type: 'drag' },
+  ])
 
   o(await game.act('p1', 'nominate', [114, 'p2'])).equals(true)
 
-  o(await game.getAvailableActions('p1', 'nominate')).deepEquals([117])
-  o(await game.getAvailableActions('p1', 'nominate', [117])).deepEquals(['p1', 'p3', 'p4', 'p5'])
+  o(await game.getDraggables('p1')).deepEquals({ 117: true })
+  o(await game.getDroppables('p1', 117)).deepEquals({
+    zones: {
+      'player/p1/status': ['nominate', [117, 'p1']],
+      'player/p3/status': ['nominate', [117, 'p3']],
+      'player/p4/status': ['nominate', [117, 'p4']],
+      'player/p5/status': ['nominate', [117, 'p5']],
+    }
+  })
+
 })
 
 //

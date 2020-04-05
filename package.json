@@ -6,18 +6,19 @@
   "author": "Gilbert <gilbertbgarza@gmail.com>",
   "license": "MIT",
   "scripts": {
-    "dev": "servor --reload",
+    "dev": "budo src/app.js:dist/app.js --live",
     "test": "ospec src/games/**/*.test.js"
   },
   "dependencies": {
+    "@shopify/draggable": "^1.0.0-beta.8",
     "gun": "^0.2020.301",
     "mithril": "^2.0.4",
+    "panzoom": "^9.2.1",
     "tau-prolog": "gilbert/tau-prolog"
   },
   "devDependencies": {
+    "budo": "^11.6.3",
     "esm": "^3.2.25",
-    "ospec": "^4.0.1",
-    "servor": "^3.2.0",
-    "snowpack": "^1.6.0"
+    "ospec": "^4.0.1"
   }
 }

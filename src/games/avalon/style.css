@@ -1,0 +1,124 @@
+:root {
+  --quest-card-width: 168px;
+  --quest-card-height: 220px;
+  --role-card-width: 140px;
+  --role-card-height: 210px;
+  --column-width: 550px;
+  --column-gap: 50px;
+  --table-padding: 100px;
+}
+
+body {
+  background-color: #000814;
+}
+#table {
+  background-color: #1c1300;
+  border-radius: 32px;
+
+  display: grid;
+  grid-template-columns: repeat(4, var(--column-width));
+  grid-template-rows: 320px 700px 320px;
+  row-gap: 100px;
+  column-gap: var(--table-padding);
+  align-items: center;
+
+  width: calc(
+    var(--column-width) * 4 +
+    var(--column-gap) * 3 +
+    var(--table-padding) * 2
+  );
+  padding: var(--table-padding);
+  box-sizing: content-box;
+}
+
+.zone-shared {
+  display: flex;
+  grid-row: 2 / 3;
+  grid-column: 2 / 4;
+  align-items: center;
+}
+.zone-board {
+  background: url(/src/games/avalon/assets/images/board-5p.png);
+  flex-shrink: 0;
+  width: 840px;
+  height: 641px;
+  border-radius: 16px;
+}
+
+.zone-player > div {
+  height: 300px;
+}
+
+
+.zone-standby {
+  margin-left: 50px;
+}
+
+.zone-quest_cards {
+  position: relative;
+  width: var(--quest-card-width);
+  height: var(--quest-card-height);
+}
+.zone-quest_cards .card {
+  position: absolute; top: 0; left: 0;
+}
+
+.card[data-type="role"] {
+  width: var(--role-card-width);
+  height: var(--role-card-height);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.card[data-type="role"] .card-back {
+  background-image: url(/src/games/avalon/assets/images/role-back.png);
+}
+.card[data-type="role"][data-name="merlin"] .card-front { background-image: url(/src/games/avalon/assets/images/role-merlin.png); }
+.card[data-type="role"][data-name="percival"] .card-front { background-image: url(/src/games/avalon/assets/images/role-percival.png); }
+.card[data-type="role"][data-name="servant_1"] .card-front { background-image: url(/src/games/avalon/assets/images/role-servant_1.png); }
+.card[data-type="role"][data-name="servant_2"] .card-front { background-image: url(/src/games/avalon/assets/images/role-servant_2.png); }
+.card[data-type="role"][data-name="servant_3"] .card-front { background-image: url(/src/games/avalon/assets/images/role-servant_2.png); }
+.card[data-type="role"][data-name="servant_4"] .card-front { background-image: url(/src/games/avalon/assets/images/role-servant_2.png); }
+.card[data-type="role"][data-name="servant_5"] .card-front { background-image: url(/src/games/avalon/assets/images/role-servant_2.png); }
+
+.card[data-type="role"][data-name="assassin"] .card-front { background-image: url(/src/games/avalon/assets/images/role-assassin.png); }
+.card[data-type="role"][data-name="mordred"] .card-front { background-image: url(/src/games/avalon/assets/images/role-mordred.png); }
+.card[data-type="role"][data-name="oberon"] .card-front { background-image: url(/src/games/avalon/assets/images/morgana.png); }
+.card[data-type="role"][data-name="morgana"] .card-front { background-image: url(/src/games/avalon/assets/images/role-oberon.png); }
+.card[data-type="role"][data-name="minion_1"] .card-front { background-image: url(/src/games/avalon/assets/images/role-minion_1.png); }
+.card[data-type="role"][data-name="minion_2"] .card-front { background-image: url(/src/games/avalon/assets/images/role-minion_2.png); }
+.card[data-type="role"][data-name="minion_3"] .card-front { background-image: url(/src/games/avalon/assets/images/role-minion_3.png); }
+
+
+.card[data-type="quest"] {
+  width: var(--quest-card-width);
+  height: var(--quest-card-height);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.card[data-type="quest"] .card-back {
+  background-image: url(/src/games/avalon/assets/images/quest-card-back.png);
+}
+.card[data-type="quest"][data-name="success"] .card-front { background-image: url(/src/games/avalon/assets/images/quest-card-success.png); }
+.card[data-type="quest"][data-name="fail"] .card-front { background-image: url(/src/games/avalon/assets/images/quest-card-fail.png); }
+
+
+.token[data-type="nomination"] {
+  background-image: url(/src/games/avalon/assets/images/token-nomination.png);
+  width: 120px;
+  height: 154px;
+  box-shadow: 0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -2px rgba(0,0,0,.05);
+}
+.zone-unused_nominations > div{
+  margin-right: 10px;
+}
+.zone-unused_nominations .token[data-type="nomination"] {
+  width: 60px;
+  height: 72px;
+}
+
+.token[data-type="king"] {
+  background-image: url(/src/games/avalon/assets/images/token-king.png);
+  width: 120px;
+  height: 120px;
+  box-shadow: 0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -2px rgba(0,0,0,.05);
+}
