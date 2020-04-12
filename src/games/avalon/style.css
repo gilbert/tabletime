@@ -48,6 +48,13 @@ body {
 .zone-player > div {
   height: 300px;
 }
+.zone-status {
+  min-width: 140px;
+  display: flex;
+  justify-content: space-evenly;
+  padding: 10px;
+  margin-left: 10px;
+}
 
 
 .zone-standby {
@@ -71,6 +78,7 @@ body {
 }
 .card[data-type="role"] .card-back {
   background-image: url(/src/games/avalon/assets/images/role-back.png);
+  border: 6px solid #151311;
 }
 .card[data-type="role"][data-name="merlin"] .card-front { background-image: url(/src/games/avalon/assets/images/role-merlin.png); }
 .card[data-type="role"][data-name="percival"] .card-front { background-image: url(/src/games/avalon/assets/images/role-percival.png); }
@@ -105,15 +113,19 @@ body {
 .token[data-type="nomination"] {
   background-image: url(/src/games/avalon/assets/images/token-nomination.png);
   width: 120px;
-  height: 154px;
+  height: 148px;
   box-shadow: 0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -2px rgba(0,0,0,.05);
+  border: 5px solid #291c14;
+  border-radius: 22px;
 }
 .zone-unused_nominations > div{
   margin-right: 10px;
 }
 .zone-unused_nominations .token[data-type="nomination"] {
   width: 60px;
-  height: 72px;
+  height: 75px;
+  border: 3px solid #291c14;
+  border-radius: 10px;
 }
 
 .token[data-type="king"] {

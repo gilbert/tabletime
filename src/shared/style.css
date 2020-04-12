@@ -1,10 +1,15 @@
 body {
   background: url(/src/shared/assets/images/tileable-axiom.png);
-  overflow: hidden;
+  float: left;
+  min-width: 100%;
 }
 
+#tableCanvas {
+  padding: 50px;
+}
 #table {
   background: url(/src/shared/assets/images/tileable-wood.png);
+  transform-origin: 0 0;
 }
 
 #action-bar {
@@ -15,8 +20,55 @@ body {
   padding: 10px;
 }
 
+/* * * *
+ * Zones
+ */
+[class^="zone-"] {
+  box-shadow: none;
+  transition: box-shadow 0.375s;
+}
+[class^="zone-"].droppable {
+  transition: box-shadow 0.1 ease-out;
+  box-shadow:
+    inset 0 0 10px rgba(0,0,0,0.3),
+    inset 0 0 20px rgba(0,0,0,0.3),
+    inset 0 0 30px rgba(0,0,0,0.3),
+    inset 0 0 40px rgba(255, 255, 255, 0.3),
+    inset 0 0 70px rgba(255, 255, 255, 0.3),
+    inset 0 0 80px rgba(255, 255, 255, 0.3),
+    inset 0 0 100px rgba(255, 255, 255, 0.3),
+    inset 0 0 150px rgba(255, 255, 255, 0.3);
+}
+[class^="zone-"].droppable.hover {
+  box-shadow:
+  inset 0 0 10px rgba(0,0,0,0.3),
+  inset 0 0 20px rgba(0,0,0,0.3),
+  inset 0 0 30px rgba(0,0,0,0.3),
+  inset 0 0 40px rgba(255, 255, 255, 0.3),
+  inset 0 0 70px rgba(255, 255, 255, 0.3),
+  inset 0 0 80px rgba(255, 255, 255, 0.3),
+  inset 0 0 100px rgba(255, 255, 255, 0.3),
+  inset 0 0 150px rgba(255, 255, 255, 0.3),
+   2px  2px 0 rgba(255, 255, 255, 0.8),
+  -2px  2px 0 rgba(255, 255, 255, 0.8),
+   2px -2px 0 rgba(255, 255, 255, 0.8),
+  -2px -2px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* * * *
+ * Cards & Tokens
+ */
+.card.npc, .token.npc {
+  transition: all 0.5s ease-out;
+}
+.card.dragging, .token.dragging {
+  /* TODO: Necessary? */
+  pointer-events: none;
+}
+
 .card {
   perspective: 1000px;
+  transform: translate(0, 0);
 }
 .card .card-flipper {
   transition: 0.6s;
@@ -37,22 +89,22 @@ body {
   backface-visibility: hidden;
   -webkit-transform-style: preserve-3d;
   transform-style: preserve-3d;
-  background-size: contain;
+  background-size: cover;
   background-position: center center;
   background-repeat: no-repeat;
 }
 
 .card .card-front {
-  z-index: 502;
+  z-index: 501;
   transform: rotateY(0deg);
 }
 .card .card-back {
-  z-index: 501;
+  z-index: 502;
   transform: rotateY(-180deg);
 }
 
 .token {
-  background-size: contain;
+  background-size: cover;
   background-position: center center;
   background-repeat: no-repeat;
 }

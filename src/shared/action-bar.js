@@ -11,7 +11,6 @@ module.exports = function ActionBar (currentPlayer, game) {
   })
 
   async function render() {
-    console.log("hm", action, args)
     const actions = await game.getAvailableActions(currentPlayer, action, args)
     if (actions.length) {
       div.innerHTML = actions.map(a => `

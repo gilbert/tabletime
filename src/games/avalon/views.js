@@ -23,7 +23,7 @@ exports.table = async (currentPlayer, game) => `
       <div class="zone-${player}">
         <div class="flex item-center">
           <div class="zone-assigned_role"></div>
-          <div class="zone-status ml-4"></div>
+          <div class="zone-status"></div>
           <div class="zone-vote"></div>
           <div class="zone-hand"></div>
         </div>

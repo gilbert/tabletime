@@ -6,7 +6,7 @@
   "author": "Gilbert <gilbertbgarza@gmail.com>",
   "license": "MIT",
   "scripts": {
-    "dev": "budo src/app.js:dist/app.js --live",
+    "dev": "budo src/index.js:dist/index.js --live",
     "test": "ospec src/games/**/*.test.js"
   },
   "dependencies": {
