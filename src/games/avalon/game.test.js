@@ -195,6 +195,8 @@ o.only('runs through a game', async function() {
 
   o(await game.act('p1', 'nominate', [117, 'p5'])).equals(true)
 
+  o(await game.getDraggables('p1')).deepEquals({})
+
   o(await game.getCurrentPhaseTodos()).deepEquals([])
   o(await game.getAvailableActions('p1')).deepEquals([
     { name: 'next_phase', type: 'button', label: 'Proceed to Voting Phase' },

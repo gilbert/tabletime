@@ -45,9 +45,20 @@ body {
   border-radius: 16px;
 }
 
-.zone-player > div {
-  height: 300px;
+.zone-hand {
+  background-color: rgba(0,0,0,0.35);
+  height: 100px;
+  position: relative;
 }
+.zone-hand::before {
+  content: attr(data-player-name);
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  font-size: 3rem;
+  color: wheat;
+  text-align: center;
+  line-height: 100px;
+}
+
 .zone-status {
   min-width: 140px;
   display: flex;
@@ -117,6 +128,9 @@ body {
   box-shadow: 0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -2px rgba(0,0,0,.05);
   border: 5px solid #291c14;
   border-radius: 22px;
+}
+.zone-unused_nominations {
+  height: 75px;
 }
 .zone-unused_nominations > div{
   margin-right: 10px;

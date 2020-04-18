@@ -43,7 +43,7 @@ async function startAvalon() {
   await game.addConfig('roles', 'minion_1')
 
   const table = document.getElementById('table')
-  table.innerHTML = await Avalon.views.table(app.currentPlayer, game)
+  table.innerHTML = await Avalon.views.table(app)
 
   //
   // TODO, SOMEONE: Math here is off, could definitely be more accurate.

@@ -43,7 +43,6 @@ module.exports = function ActionBar (app) {
     }
 
     div.innerHTML = `
-      <div class="flex-1 flex items-center justify-center">${actionsHtml}</div>
       <div
         class="flex items-center"
         data-tippy-content="${
@@ -52,9 +51,13 @@ module.exports = function ActionBar (app) {
         }"
       >
         Game Status
-        <div class="w-3 h-3 rounded-full ml-2 ${
-          todos.length > 0 ? 'bg-orange-400' : 'bg-green-500'
+        <div class="w-3 h-3 ml-2 ${
+          todos.length > 0 ? 'bg-orange-400' : 'bg-green-500 rounded-full'
         }"></div>
+      </div>
+      <div class="flex-1 flex items-center justify-center">${actionsHtml}</div>
+      <div>
+        You are ${app.playerNames[app.currentPlayer]}
       </div>
     `
   }

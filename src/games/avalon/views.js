@@ -1,6 +1,6 @@
 const allPlayers = Array(10).fill().map((_, n) => `p${n+1}`)
 
-exports.table = async (currentPlayer, game) => `
+exports.table = async (app) => `
   <div class="zone-shared">
     <div class="zone-board">
       <div class="zone-reject_count">
@@ -21,11 +21,11 @@ exports.table = async (currentPlayer, game) => `
   ${allPlayers.map(player => `
     <div class="zone-player">
       <div class="zone-${player}">
-        <div class="flex item-center">
+        <div class="zone-hand" data-player-name="${app.playerNames[player]}"></div>
+        <div class="flex item-center mt-4" style="height: 210px;">
           <div class="zone-assigned_role"></div>
           <div class="zone-status"></div>
           <div class="zone-vote"></div>
-          <div class="zone-hand"></div>
         </div>
         <div class="zone-unused_nominations mt-2 pl-1 flex"></div>
       </div>
