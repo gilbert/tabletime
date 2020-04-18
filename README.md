@@ -10,3 +10,7 @@ Coming soon.
 $ yarn install
 $ yarn test
 ```
+
+## Resources
+
+- https://www.transparenttextures.com

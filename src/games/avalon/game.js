@@ -29,6 +29,23 @@ check_ready_start(Error) :-
   EC =\\= Target,
   atomic_list_concat(['Please choose exactly ', Target, ' evil roles.'], Error).
 
+todo(Todo) :-
+  phase(round(_, nominate)),
+  current_king(King),
+  count(available_action(King, nominate, [_]), Left),
+  Left > 0,
+  pluralize(Left, 'more player', LeftStr),
+  atomic_list_concat(['King must nominate ', LeftStr], Todo).
+
+todo(Todo) :-
+  phase(round(_, vote)),
+  player(P),
+  \\+ card(vote, _, _, [player, P, vote], _),
+  atomic_list_concat(['{{', P, '}} must cast a vote'], Todo).
+
+% % % % % % %
+% Game Setup
+%
 start_game :-
   (config(random_seed, single, S) -> set_random(S); true),
   set_phase(round(0, setup)),
@@ -112,6 +129,16 @@ pickup_vote_cards :-
     assertz( card(vote, Decision, down, [player, Player, hand], Id) )
   )).
 
+%shuffle_vote_cards :-
+%  findall(Id, card(vote, _, _, _, Id), VoteCards),
+%
+%  random_permutation(VoteCards, Shuffled),
+%
+%  forall(Shuffled = card(vote, Decision, _, [player, Player, hand], Id), (
+%    retract( card(_, _, _, _, Id) ),
+%    assertz( card(vote, Decision, down, [player, Player, hand], Id) )
+%  )).
+
 set_nomination_tokens(Round) :-
   player_count(PC),
   current_king(King),
@@ -129,13 +156,13 @@ set_nomination_tokens(Round) :-
     assertz( token(nomination, [player, King, unused_nominations], Id) )
   )).
 
-%
+% % % % %
 % Config
 %
 config_option(roles, Role) :- good_role(Role) ; evil_role(Role).
 config_option(role_permutation, Roles) :- member(R, Roles), config_option(roles, R).
 
-%
+% % % % % % %
 % Static Data
 %
 good_role(R) :- member(R, [
@@ -198,7 +225,7 @@ party_size(10, 3, 4).
 party_size(10, 4, 5).
 party_size(10, 5, 5).
 
-%
+% % % % % % %
 % Data Rules
 %
 fails_required(PlayerCount, 4, 2) :- PlayerCount >= 7.
@@ -207,16 +234,19 @@ fails_required(_, _, 1).
 player_count(N) :-
   count(player(_), N).
 
-%
+% % % % % % % %
 % Access Rules
 %
-
 %
 % draggable/2 SHOULD validate permissions.
 % This provides better UX as the user can't drag something they can't interact with.
 %
 % In constract, droppable/5 SHOULD NOT validate permissions.
 % It only constructs an action; available_action/3 will validate elsewhere.
+%
+
+%
+% Nomination tokens
 %
 draggable(Actor, Id) :-
   phase(round(_, nominate)),
@@ -229,19 +259,47 @@ droppable(_, DraggableId, DropZone, nominate, [DraggableId, Target]) :-
   DropZone = [player, Target, status],
   \\+ token(nomination, DropZone, _).
 
+%
+% Vote cards
+%
+draggable(Actor, Id) :-
+  phase(round(_, vote)),
+  available_action(Actor, vote, [Id]).
 
+droppable(Actor, DraggableId, DropZone, vote, [DraggableId, commit]) :-
+  card(vote, _, _, _, DraggableId),
+  DropZone = [player, Actor, vote].
 
 zone_hidden(P1, [player, P2, hand]) :- P1 \\== P2.
 
-%
+% % % % % % % % %
 % Player Actions
 %
+action(next_phase, 0, button).
 action(nominate, 2, drag).
 action(vote, 2, drag).
 
+action_label(next_phase, 'Proceed to Voting Phase') :- phase(round(_, nominate)).
+
+%
+% Next Phase
+%
+available_action(Actor, next_phase, []) :-
+  current_king(Actor),
+  \\+ todo(_).
+
+act(next_phase, _, []) :-
+  phase(round(N0, nominate)),
+  N is N0 + 1,
+  set_phase(round(N, vote)).
+
+%
+% Nominate
+%
 available_action(Actor, nominate, []) :-
   phase(round(_, nominate)),
-  current_king(Actor).
+  current_king(Actor),
+  once( token(nomination, [player, Actor, unused_nominations], _) ).
 
 available_action(Actor, nominate, [Source]) :-
   available_action(Actor, nominate, []),
@@ -255,20 +313,22 @@ available_action(Actor, nominate, [Source, Target]) :-
 act(nominate, _, [Source, Target]) :-
   move_token(Source, [player, Target, status]).
 
-
+%
+% Vote
+%
 available_action(Actor, vote, []) :-
   phase(round(_, vote)),
-  \\+ card(vote, _, [player, Actor, vote], _).
+  \\+ card(vote, _, _, [player, Actor, vote], _).
 
 available_action(Actor, vote, [Source]) :-
-  card(vote, _, [player, Actor, hand], Source).
+  available_action(Actor, vote, []),
+  card(vote, _, _, [player, Actor, hand], Source).
 
-available_action(Actor, vote, [Source, Target]) :-
-  available_action(Actor, vote, [Source]),
-  Target = [player, Actor, vote].
+available_action(Actor, vote, [Source, commit]) :-
+  available_action(Actor, vote, [Source]).
 
-act(vote, _, [Source, Target]) :-
-  move_token(Source, Target).
+act(vote, Actor, [Source, commit]) :-
+  move_card(Source, [player, Actor, vote], up).
 
 
 %
@@ -280,6 +340,13 @@ zip([X|Xs], [Y|Ys], [[X,Y]|Zs]) :- zip(Xs,Ys,Zs).
 count(Predicate, N) :-
   findall(_, Predicate, Solutions),
   length(Solutions, N).
+
+pluralize(N, Thing, Out) :- pluralize(N, Thing, 's', Out).
+pluralize(1, Thing, _, Out) :-
+  atomic_list_concat([1, ' ', Thing], Out), !.
+pluralize(N, Thing, Suffix, Out) :-
+  atomic_list_concat([N, ' ', Thing, Suffix], Out).
+
 
 %
 % Tabletime Engine
@@ -305,6 +372,8 @@ try_act(Actor, Action, Args) :-
 % act(Actor, Action, Args)
 act(_, _, _) :- false.
 action(_, _, _) :- false.
+todo(_) :- false.
+action_label(Action, Action).
 
 % draggable(Actor, Id)
 draggable(_, _) :- false.
@@ -455,9 +524,10 @@ set_config(Name, Value) :-
       else {
         return (await session.query_all`
           available_action(${player}, Action, ${args}),
-          action(Action, _, Type).
+          action(Action, _, Type),
+          once( action_label(Action, Label) ).
         `)
-          .map(row => ({ name: row.Action, type: row.Type }))
+          .map(row => ({ name: row.Action, type: row.Type, label: row.Label }))
       }
     },
 
@@ -492,6 +562,11 @@ set_config(Name, Value) :-
         }, ${action}, [${args.join(', ')}])`, successes)
       }
       return successes.length > 0
+    },
+
+    async getCurrentPhaseTodos() {
+      const solutions = await session.query_all`todo(Todo).`
+      return solutions.map(s => s.Todo)
     },
 
     async debug(strings, ...values) {

@@ -126,7 +126,7 @@ async function createFivePlayerGame() {
   return game
 }
 
-o('runs through a game', async function() {
+o.only('runs through a game', async function() {
   const game = await createFivePlayerGame()
   const state = await game.getState()
 
@@ -156,6 +156,10 @@ o('runs through a game', async function() {
     ...times(1, { zone: 'shared/standby/nomination_tokens', type: 'nomination' }),
   ])
 
+  o(await game.getCurrentPhaseTodos()).deepEquals([
+    'King must nominate 2 more players'
+  ])
+
   o(await game.getDraggables('p2')).deepEquals({})
   o(await game.getAvailableActions('p2')).deepEquals([])
 
@@ -170,10 +174,14 @@ o('runs through a game', async function() {
     }
   })
   o(await game.getAvailableActions('p1')).deepEquals([
-    { name: 'nominate', type: 'drag' },
+    { name: 'nominate', type: 'drag', label: 'nominate' },
   ])
 
   o(await game.act('p1', 'nominate', [114, 'p2'])).equals(true)
+
+  o(await game.getCurrentPhaseTodos()).deepEquals([
+    'King must nominate 1 more player'
+  ])
 
   o(await game.getDraggables('p1')).deepEquals({ 117: true })
   o(await game.getDroppables('p1', 117)).deepEquals({
@@ -185,6 +193,33 @@ o('runs through a game', async function() {
     }
   })
 
+  o(await game.act('p1', 'nominate', [117, 'p5'])).equals(true)
+
+  o(await game.getCurrentPhaseTodos()).deepEquals([])
+  o(await game.getAvailableActions('p1')).deepEquals([
+    { name: 'next_phase', type: 'button', label: 'Proceed to Voting Phase' },
+  ])
+  o(await game.getAvailableActions('p2')).deepEquals([])
+
+  //
+  // Voting
+  //
+  o(await game.act('p1', 'next_phase', [])).equals(true)
+
+  o(await game.getAvailableActions('p1')).deepEquals([
+    { name: 'vote', type: 'drag', label: 'vote' }
+  ])
+  o(await game.getAvailableActions('p2')).deepEquals([
+    { name: 'vote', type: 'drag', label: 'vote' }
+  ])
+
+  o(await game.getCurrentPhaseTodos()).deepEquals([
+    '{{p1}} must cast a vote',
+    '{{p2}} must cast a vote',
+    '{{p3}} must cast a vote',
+    '{{p4}} must cast a vote',
+    '{{p5}} must cast a vote',
+  ])
 })
 
 //

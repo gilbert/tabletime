@@ -12,9 +12,11 @@
   "dependencies": {
     "@shopify/draggable": "^1.0.0-beta.8",
     "gun": "^0.2020.301",
+    "lodash": "^4.17.15",
     "mithril": "^2.0.4",
     "panzoom": "^9.2.1",
-    "tau-prolog": "gilbert/tau-prolog"
+    "tau-prolog": "gilbert/tau-prolog",
+    "tippy.js": "^6.2.0"
   },
   "devDependencies": {
     "budo": "^11.6.3",
