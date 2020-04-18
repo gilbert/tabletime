@@ -94,6 +94,9 @@ async function sync() {
     if (draggables[card.id]) {
       elem.dataset.draggable = draggables[card.id]
     }
+    else if (elem.dataset.draggable) {
+      delete elem.dataset.draggable
+    }
   })
 
   state.tokens.forEach(token => {
@@ -132,6 +135,9 @@ async function sync() {
     }
     if (draggables[token.id]) {
       elem.dataset.draggable = draggables[token.id]
+    }
+    else if (elem.dataset.draggable) {
+      delete elem.dataset.draggable
     }
   })
 
