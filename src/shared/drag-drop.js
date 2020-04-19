@@ -5,6 +5,7 @@ const app = require('./app')
 let dragElem = null
 let dropZone = null
 let dragStart = []
+let dragStartOffset = []
 let dragMove = []
 let zCounter = 500
 let droppables = { zones: {} };
@@ -20,8 +21,13 @@ document.addEventListener(eventstart, async e => {
 
   dragElem = e.target
   dropZone = null
+
+  const bbox = dragElem.getBoundingClientRect()
   dragStart[0] = (dragMove[0] = e.pageX)
   dragStart[1] = (dragMove[1] = e.pageY)
+  dragStartOffset[0] = dragStart[0] - bbox.x
+  dragStartOffset[1] = dragStart[1] - bbox.y
+
   dragElem.classList.remove('npc')
   dragElem.style.zIndex = zCounter++
 
@@ -71,6 +77,11 @@ document.addEventListener(eventend, async e => {
   dragElem = null
 
   if (dropZone) {
+    if (app.findInHand(el.dataset.id)) {
+      el.dataset.dropX = e.pageX + window.pageXOffset - dragStartOffset[0]
+      el.dataset.dropY = e.pageY + window.pageYOffset - dragStartOffset[1]
+    }
+
     let actions = [];
     for(let zone in droppables.zones) {
       if (dropZone.matches(zoneToSelector(zone))) {
@@ -78,7 +89,7 @@ document.addEventListener(eventend, async e => {
       }
     }
     let [action, args] = actions.length >= 2
-      ? await Promise.resolve('TODO')
+      ? await Promise.resolve('TODO: Ask user which action they want to perform')
       : actions[0]
 
     await app.game.act(app.currentPlayer, action, args)

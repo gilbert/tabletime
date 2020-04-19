@@ -7,20 +7,18 @@ templateSettings.interpolate = /{{([\s\S]+?)}}/g
 
 module.exports = function ActionBar (app) {
   let todos = []
-  const div = document.getElementById('action-bar')
-  tippy.delegate(div, {
+  tippy.delegate($actionBar, {
     target: '[data-tippy-content]',
     allowHTML: true,
   })
 
-  document.getElementById('action-bar').addEventListener('click', async e => {
+  $actionBar.addEventListener('click', async e => {
     const action = e.target.dataset.action
     if (!action) return;
 
     const args = JSON.parse(e.target.dataset.args)
     await app.game.act(app.currentPlayer, action, args)
     await app.sync()
-    render()
   })
 
   async function render() {
@@ -42,7 +40,7 @@ module.exports = function ActionBar (app) {
       actionsHtml = ''
     }
 
-    div.innerHTML = `
+    $actionBar.innerHTML = `
       <div
         class="flex items-center"
         data-tippy-content="${

@@ -30,7 +30,7 @@ check_ready_start(Error) :-
   atomic_list_concat(['Please choose exactly ', Target, ' evil roles.'], Error).
 
 todo(Todo) :-
-  phase(round(_, nominate)),
+  phase([round, _, nominate]),
   current_king(King),
   count(available_action(King, nominate, [_]), Left),
   Left > 0,
@@ -38,7 +38,7 @@ todo(Todo) :-
   atomic_list_concat(['King must nominate ', LeftStr], Todo).
 
 todo(Todo) :-
-  phase(round(_, vote)),
+  phase([round, _, vote]),
   player(P),
   \\+ card(vote, _, _, [player, P, vote], _),
   atomic_list_concat(['{{', P, '}} must cast a vote'], Todo).
@@ -48,7 +48,7 @@ todo(Todo) :-
 %
 start_game :-
   (config(random_seed, single, S) -> set_random(S); true),
-  set_phase(round(0, setup)),
+  set_phase([round, 0, setup]),
   assign_role_cards,
   setup_board,
   create_vote_cards,
@@ -116,12 +116,12 @@ assign_next_king :-
 current_king(P) :- once(king(P)).
 
 new_round :-
-  phase(round(N0, _)),
+  phase([round, N0, _]),
   pickup_vote_cards,
   assign_next_king,
   N is N0 + 1,
   set_nomination_tokens(N),
-  set_phase(round(N, nominate)).
+  set_phase([round, N, nominate]).
 
 pickup_vote_cards :-
   forall( card(vote, Decision, _, [player, Player, vote], Id), (
@@ -249,7 +249,7 @@ player_count(N) :-
 % Nomination tokens
 %
 draggable(Actor, Id) :-
-  phase(round(_, nominate)),
+  phase([round, _, nominate]),
   current_king(Actor),
   token(nomination, [player, Actor, unused_nominations], Id).
 
@@ -263,7 +263,7 @@ droppable(_, DraggableId, DropZone, nominate, [DraggableId, Target]) :-
 % Vote cards
 %
 draggable(Actor, Id) :-
-  phase(round(_, vote)),
+  phase([round, _, vote]),
   available_action(Actor, vote, [Id]).
 
 droppable(Actor, DraggableId, DropZone, vote, [DraggableId, commit]) :-
@@ -279,7 +279,7 @@ action(next_phase, 0, button).
 action(nominate, 2, drag).
 action(vote, 2, drag).
 
-action_label(next_phase, 'Proceed to Voting Phase') :- phase(round(_, nominate)).
+action_label(next_phase, 'Proceed to Voting Phase') :- phase([round, _, nominate]).
 
 %
 % Next Phase
@@ -289,15 +289,14 @@ available_action(Actor, next_phase, []) :-
   \\+ todo(_).
 
 act(next_phase, _, []) :-
-  phase(round(N0, nominate)),
-  N is N0 + 1,
-  set_phase(round(N, vote)).
+  phase([round, N, nominate]),
+  set_phase([round, N, vote]).
 
 %
 % Nominate
 %
 available_action(Actor, nominate, []) :-
-  phase(round(_, nominate)),
+  phase([round, _, nominate]),
   current_king(Actor),
   once( token(nomination, [player, Actor, unused_nominations], _) ).
 
@@ -317,7 +316,7 @@ act(nominate, _, [Source, Target]) :-
 % Vote
 %
 available_action(Actor, vote, []) :-
-  phase(round(_, vote)),
+  phase([round, _, vote]),
   \\+ card(vote, _, _, [player, Actor, vote], _).
 
 available_action(Actor, vote, [Source]) :-
@@ -328,7 +327,7 @@ available_action(Actor, vote, [Source, commit]) :-
   available_action(Actor, vote, [Source]).
 
 act(vote, Actor, [Source, commit]) :-
-  move_card(Source, [player, Actor, vote], up).
+  move_card(Source, [player, Actor, vote], down).
 
 
 %
@@ -479,6 +478,12 @@ set_config(Name, Value) :-
     },
 
     async getState() {
+      const phases = await session.query_all`phase(Phase).`
+      if (phases.length > 1) {
+        console.warn(`[game.start] Warning: Multiple phases`, phases)
+      }
+      const phase = phases[0].Phase
+
       const cards = (await session.query_all`
         card(Type, Name, Face, Zone, Id).
       `).map(row => {
@@ -508,7 +513,7 @@ set_config(Name, Value) :-
 
       tokens.sort(byTokenContent)
 
-      return { cards, tokens }
+      return { phase, cards, tokens }
     },
 
     async getAvailableActions(player, action=null, args) {

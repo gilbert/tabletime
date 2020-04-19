@@ -10,6 +10,7 @@
     "test": "ospec src/games/**/*.test.js"
   },
   "dependencies": {
+    "@composi/gestures": "^1.0.9",
     "@shopify/draggable": "^1.0.0-beta.8",
     "gun": "^0.2020.301",
     "lodash": "^4.17.15",

@@ -4,6 +4,9 @@ const Avalon = require('../games/avalon')
 const ActionBar = require('./action-bar')
 const { zoneToSelector } = require('./util')
 
+const PLAYER_HAND_ZONE = /^player\/([^/]+)\/hand/
+const TRANSLATE_COORDS = /translate\(([0-9\.\-]+)px, *([0-9\.\-]+)px\)/
+
 let actionBar;
 
 let game, scale;
@@ -14,6 +17,7 @@ app.currentPlayer = 'p1'
 
 app.sync = sync
 app.start = startAvalon
+app.findInHand = findInHand
 
 app.playerNames = {
   p1: 'Player 1',
@@ -42,28 +46,33 @@ async function startAvalon() {
   await game.addConfig('roles', 'assassin')
   await game.addConfig('roles', 'minion_1')
 
-  const table = document.getElementById('table')
-  table.innerHTML = await Avalon.views.table(app)
+  $table.innerHTML = await Avalon.views.table(app)
+  $handBar.innerHTML = await Avalon.views.handBar(app)
 
   //
   // TODO, SOMEONE: Math here is off, could definitely be more accurate.
   //
   const padding = 100
   scale = app.tableScale = Math.max(
-    Math.min(1, (window.innerWidth - padding) / (tableCanvas.offsetWidth - padding/2)),
-    Math.min(1, (window.innerHeight - padding) / (tableCanvas.offsetHeight - padding/2)),
+    Math.min(1, (window.innerWidth - padding) / ($tableCanvas.offsetWidth - padding/2)),
+    Math.min(1, (window.innerHeight - padding) / ($tableCanvas.offsetHeight - padding/2)),
   )
 
-  table.style.transform = `scale(${scale})`
+  $table.style.transform = `scale(${scale})`
+  $handBar.style.transform = `scale(${scale}) translateY(100%)`
 
-  tableCanvas.dataset.originalWidth = tableCanvas.offsetWidth
-  tableCanvas.dataset.originalHeight = tableCanvas.offsetHeight
-  tableCanvas.style.width = `${tableCanvas.offsetWidth * scale + padding/2}px`
-  tableCanvas.style.height = `${tableCanvas.offsetHeight * scale + padding/2}px`
-
+  $tableCanvas.dataset.originalWidth = $tableCanvas.offsetWidth
+  $tableCanvas.dataset.originalHeight = $tableCanvas.offsetHeight
+  $tableCanvas.style.width = `${$tableCanvas.offsetWidth * scale + padding/2}px`
+  $tableCanvas.style.height = `${$tableCanvas.offsetHeight * scale + padding/2}px`
 
   await game.start()
+  // await game.act('p1', 'nominate', [114, 'p1']) // TEMP
+  // await game.act('p1', 'nominate', [117, 'p2']) // TEMP
+  // await game.act('p1', 'next_phase', []) // TEMP
   actionBar = ActionBar(app)
+  // Put this after the `await` so we don't have a crazy zoom animation on page load
+  $handBar.classList.add('initialized')
   sync()
 }
 
@@ -77,6 +86,7 @@ async function sync() {
     if (!elem) {
       elem = document.createElement('div')
       elem.id = domId
+      elem.style.transform = `translate(0px, 0px)`
       elem.className = 'card npc'
       elem.dataset.id = card.id
       elem.dataset.type = card.type
@@ -88,15 +98,15 @@ async function sync() {
           <div class="card-front"></div>
         </div>
       `
-      document.querySelector(zoneToSelector(card.zone)).appendChild(elem)
+      addToTable(app, elem, card.zone)
     }
+    else {
+      syncZone(elem, card.zone)
+    }
+
     elem.dataset.face = card.face
-    if (draggables[card.id]) {
-      elem.dataset.draggable = draggables[card.id]
-    }
-    else if (elem.dataset.draggable) {
-      delete elem.dataset.draggable
-    }
+    syncDraggable(draggables, elem, card.id)
+    syncWithHand(app, elem)
   })
 
   state.tokens.forEach(token => {
@@ -105,68 +115,128 @@ async function sync() {
     if (!elem) {
       elem = document.createElement('div')
       elem.id = domId
+      elem.style.transform = `translate(0px, 0px)`
       elem.className = 'token npc'
       elem.dataset.id = token.id
       elem.dataset.type = token.type
       elem.dataset.zone = token.zone
-      document.querySelector(zoneToSelector(token.zone)).appendChild(elem)
+      addToTable(app, elem, token.zone)
     }
-    else if (elem.dataset.zone !== token.zone) {
-      const bbox = elem.getBoundingClientRect()
-      const old_x = bbox.left / scale
-      const old_y = bbox.top / scale
-      const oldTranslate = (elem.style.transform || '').match(/translate\(([0-9\.\-]+)px, *([0-9\.\-]+)px\)/)
+    else {
+      syncZone(elem, token.zone)
+    }
 
-      const newParent = document.querySelector(zoneToSelector(token.zone))
-      newParent.appendChild(elem)
-
-      if (oldTranslate) {
-        const [tx, ty] = oldTranslate.slice(1).map(Number)
-        const bbox_2 = elem.getBoundingClientRect()
-        const new_x = (bbox_2.left / scale) - tx
-        const new_y = (bbox_2.top / scale)  - ty
-
-        elem.style.transform = `translate(${old_x - new_x}px, ${old_y - new_y}px)`
-        requestAnimationFrame(() => {
-          elem.classList.add('npc')
-          elem.style.transform = `translate(0px, 0px)`
-        })
-      }
-    }
-    if (draggables[token.id]) {
-      elem.dataset.draggable = draggables[token.id]
-    }
-    else if (elem.dataset.draggable) {
-      delete elem.dataset.draggable
-    }
+    syncDraggable(draggables, elem, token.id)
+    syncWithHand(app, elem)
   })
 
   await actionBar.sync()
+
+  const isHandAvailable = Object.keys(draggables).some(id => findInHand(id))
+  $handBar.style.transform = `scale(${scale}) translateY(${isHandAvailable ? '0%' : '100%'})`
+}
+
+function addToTable(app, elem, zone) {
+  const zoneElem = document.querySelector(zoneToSelector(zone))
+  zoneElem.appendChild(elem)
+}
+
+function syncWithHand(app, elem) {
+  const match = elem.dataset.zone.match(PLAYER_HAND_ZONE)
+  // if (!match || match[1] !== app.currentPlayer) return
+
+  const existing = findInHand(elem.dataset.id)
+
+  const oldZone = existing && existing.dataset.zone
+  const newZone = elem.dataset.zone
+
+  if (existing && oldZone !== newZone) {
+    // $handBar only handles one zone.
+    // Therefore, if it's not in this zone, we don't care about it.
+    existing.remove()
+  }
+  else if (existing) {
+    // Sync state
+    if (elem.dataset.face) {
+      existing.dataset.face = elem.dataset.face
+    }
+    if (elem.dataset.draggable) {
+      existing.dataset.draggable = elem.dataset.draggable
+    }
+    else {
+      delete existing.dataset.draggable
+    }
+  }
+  else if (match && match[1] === app.currentPlayer) {
+    // Add to hand bar
+    const clone = elem.cloneNode(true)
+    delete clone.id
+    $handBar.querySelector(zoneToSelector(elem.dataset.zone)).appendChild(clone)
+  }
+}
+
+function syncZone (elem, newZone) {
+  const oldZone = elem.dataset.zone
+  if (newZone === oldZone) return;
+
+  const handElem = findInHand(elem.dataset.id)
+  if (handElem) {
+    // Moved element is actually a drag & drop from player's hand!
+    // Animate from that position instead.
+    // elem.classList.remove('npc')
+
+    // ASSUMPTION: Original element is at translate(0,0)
+    // Therefore we only need to take the simple difference.
+    const elem_bbox = elem.getBoundingClientRect()
+    const old_x = elem_bbox.x / scale
+    const old_y = elem_bbox.y / scale
+
+    const new_x = handElem.dataset.dropX / scale
+    const new_y = handElem.dataset.dropY / scale
+    // No need to delete dropX/Y as handElem will soon be removed by syncWithHand()
+
+    elem.classList.remove('npc')
+    void elem.offsetWidth; // recalc to avoid transition animation
+    elem.style.transform = `translate(${new_x - old_x}px, ${new_y - old_y}px)`
+  }
+
+  // Record position before moving element
+  const bbox = elem.getBoundingClientRect()
+  const old_x = bbox.x / scale
+  const old_y = bbox.y / scale
+  const oldTranslate = (elem.style.transform || '').match(TRANSLATE_COORDS)
+
+  const newParent = document.querySelector(zoneToSelector(newZone))
+  newParent.appendChild(elem)
+  elem.dataset.zone = newZone
+
+  if (oldTranslate) {
+    const [tx, ty] = oldTranslate.slice(1).map(Number)
+    const bbox_2 = elem.getBoundingClientRect()
+    const new_x = (bbox_2.x / scale) - tx
+    const new_y = (bbox_2.y / scale)  - ty
+
+    elem.style.transform = `translate(${old_x - new_x}px, ${old_y - new_y}px)`
+    requestAnimationFrame(() => {
+      elem.classList.add('npc')
+      elem.style.transform = `translate(0px, 0px)`
+    })
+  }
+}
+
+function syncDraggable (draggables, elem, id) {
+  if (draggables[id]) {
+    elem.dataset.draggable = draggables[id]
+  }
+  else if (elem.dataset.draggable) {
+    delete elem.dataset.draggable
+  }
+}
+
+function findInHand (id) {
+  return $handBar.querySelector(`[data-id="${id}"]`)
 }
 
 function objectDomId(id) {
   return `obj-${id}`
-}
-
-function moveAnimate(element, newParent){
-  //Allow passing in either a jQuery object or selector
-  element = $(element);
-  newParent= $(newParent);
-
-  var oldOffset = element.offset();
-  element.appendTo(newParent);
-  var newOffset = element.offset();
-
-  var temp = element.clone().appendTo('body');
-  temp.css({
-      'position': 'absolute',
-      'left': oldOffset.left,
-      'top': oldOffset.top,
-      'z-index': 1000
-  });
-  element.hide();
-  temp.animate({'top': newOffset.top, 'left': newOffset.left}, 'slow', function(){
-     element.show();
-     temp.remove();
-  });
 }

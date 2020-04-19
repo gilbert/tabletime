@@ -1,3 +1,4 @@
+const {escapeHtml} = require('../../shared/util')
 const allPlayers = Array(10).fill().map((_, n) => `p${n+1}`)
 
 exports.table = async (app) => `
@@ -21,7 +22,10 @@ exports.table = async (app) => `
   ${allPlayers.map(player => `
     <div class="zone-player">
       <div class="zone-${player}">
-        <div class="zone-hand" data-player-name="${app.playerNames[player]}"></div>
+        <div class="hand-container" data-me="${player === app.currentPlayer}">
+          <div class="player-name">${escapeHtml(app.playerNames[player])}</div>
+          <div class="zone-hand"></div>
+        </div>
         <div class="flex item-center mt-4" style="height: 210px;">
           <div class="zone-assigned_role"></div>
           <div class="zone-status"></div>
@@ -31,4 +35,13 @@ exports.table = async (app) => `
       </div>
     </div>
   `).join('\n')}
+`
+
+exports.handBar = async (app) => `
+  <!-- Mirror a normal player hand to reuse relevant styles -->
+  <div class="zone-player">
+    <div class="zone-${app.currentPlayer}">
+      <div class="zone-hand"></div>
+    </div>
+  </div>
 `

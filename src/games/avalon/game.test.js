@@ -138,6 +138,8 @@ o.only('runs through a game', async function() {
     ]
   }
 
+  o(state.phase).deepEquals(['round', 1, 'nominate'])
+
   o(state.cards.map(noId)).deepEquals([
     ...playerHand('p1', 'assassin'),
     ...playerHand('p2', 'minion_1'),
@@ -156,6 +158,9 @@ o.only('runs through a game', async function() {
     ...times(1, { zone: 'shared/standby/nomination_tokens', type: 'nomination' }),
   ])
 
+  //
+  // Nominations 1
+  //
   o(await game.getCurrentPhaseTodos()).deepEquals([
     'King must nominate 2 more players'
   ])
@@ -208,12 +213,21 @@ o.only('runs through a game', async function() {
   //
   o(await game.act('p1', 'next_phase', [])).equals(true)
 
+  o((await game.getState()).phase).deepEquals(['round', 1, 'vote'])
+
   o(await game.getAvailableActions('p1')).deepEquals([
     { name: 'vote', type: 'drag', label: 'vote' }
   ])
   o(await game.getAvailableActions('p2')).deepEquals([
     { name: 'vote', type: 'drag', label: 'vote' }
   ])
+
+  o(await game.getDraggables('p1')).deepEquals({ 121: true, 122: true })
+  o(await game.getDroppables('p1', 121)).deepEquals({
+    zones: {
+      'player/p1/vote': ['vote', [121, 'commit']]
+    }
+  })
 
   o(await game.getCurrentPhaseTodos()).deepEquals([
     '{{p1}} must cast a vote',
@@ -222,6 +236,25 @@ o.only('runs through a game', async function() {
     '{{p4}} must cast a vote',
     '{{p5}} must cast a vote',
   ])
+
+  //
+  // Reject vote
+  //
+  // console.log(await game.getDraggables('p3'))
+  // game.debug`card(A,B,C,D,121).`
+  o(await game.act('p1', 'vote', [122, 'commit'])).equals(true)
+  o(await game.act('p2', 'vote', [124, 'commit'])).equals(true)
+  o(await game.act('p3', 'vote', [126, 'commit'])).equals(true)
+  o(await game.act('p4', 'vote', [127, 'commit'])).equals(true)
+  o(await game.act('p5', 'vote', [129, 'commit'])).equals(true)
+
+  o(await game.getCurrentPhaseTodos()).deepEquals([])
+
+  //
+  // Next round
+  //
+  o(await game.act('p1', 'next_phase', [])).equals(true)
+  o(state.phase).deepEquals(['round', 2, 'nominate'])
 })
 
 //
