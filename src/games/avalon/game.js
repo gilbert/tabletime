@@ -333,3 +333,17 @@ act(vote, Actor, [Source, commit]) :-
   move_card(Source, [player, Actor, vote], down).
   `)
 }
+
+exports.testSetup = async function testSetup(game) {
+  await game.addPlayer('p1')
+  await game.addPlayer('p2')
+  await game.addPlayer('p3')
+  await game.addPlayer('p4')
+  await game.addPlayer('p5')
+
+  await game.addConfig('roles', 'merlin')
+  await game.addConfig('roles', 'servant_1')
+  await game.addConfig('roles', 'servant_2')
+  await game.addConfig('roles', 'assassin')
+  await game.addConfig('roles', 'minion_1')
+}

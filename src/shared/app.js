@@ -1,6 +1,5 @@
-const Avalon = require('../games/avalon')
-// const panzoom = require('panzoom')
-// const Panzoom = require('@panzoom/panzoom')
+const Game = require('../games/avalon')
+
 const ActionBar = require('./ui/action-bar')
 const { zoneToSelector } = require('./util')
 
@@ -32,22 +31,12 @@ app.playerNames = {
   p10: 'Player 10',
 }
 
-async function startAvalon() {
-  app.game = (game = Avalon.createGame())
-  await game.addPlayer('p1')
-  await game.addPlayer('p2')
-  await game.addPlayer('p3')
-  await game.addPlayer('p4')
-  await game.addPlayer('p5')
+async function startGame() {
+  app.game = (game = Game.createGame())
+  await Game.testSetup(game)
 
-  await game.addConfig('roles', 'merlin')
-  await game.addConfig('roles', 'servant_1')
-  await game.addConfig('roles', 'servant_2')
-  await game.addConfig('roles', 'assassin')
-  await game.addConfig('roles', 'minion_1')
-
-  $table.innerHTML = await Avalon.views.table(app)
-  $handBar.innerHTML = await Avalon.views.handBar(app)
+  $table.innerHTML = await Game.views.table(app)
+  $handBar.innerHTML = await Game.views.handBar(app)
 
   //
   // TODO, SOMEONE: Math here is off, could definitely be more accurate.
