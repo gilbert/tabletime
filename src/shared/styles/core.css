@@ -42,6 +42,29 @@ body {
   border-radius: 5px 5px 0 0;
 }
 
+#\$itemViewer {
+  display: none;
+}
+#\$itemViewer.-viewing {
+  display: block;
+  position: fixed; top: 0; right: 0; bottom: 0; left: 0;
+}
+#\$itemViewer .card .card-flipper {
+  transition: none;
+}
+#\$itemViewer.-peeking .card[data-face="down"] .card-flipper {
+  transform: rotateY(0);
+}
+#\$itemViewer.-cannot-peek .card::after {
+  content: "🚫";
+  font-size: 4rem;
+  position: absolute; top: 50%; left: 50%;
+  margin-top: -0.5rem;
+  margin-left: -2rem;
+  line-height: 0;
+  text-shadow: 0 0 14px rgba(0,0,0,0.75);
+}
+
 /* * * *
  * Zones
  */
@@ -90,6 +113,7 @@ body {
 
 .card {
   perspective: 1000px;
+  position: relative;
   transform: translate(0, 0);
 }
 .card .card-flipper {

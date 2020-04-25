@@ -79,6 +79,7 @@ async function startAvalon() {
 async function sync() {
   const state = await game.getState()
   const draggables = await game.getDraggables(app.currentPlayer)
+  const peekables = await game.getPeekables(app.currentPlayer)
 
   state.cards.forEach(card => {
     let domId = objectDomId(card.id)
@@ -106,6 +107,7 @@ async function sync() {
 
     elem.dataset.face = card.face
     syncDraggable(draggables, elem, card.id)
+    syncPeekable(peekables, elem, card.id)
     syncWithHand(app, elem)
   })
 
@@ -230,6 +232,15 @@ function syncDraggable (draggables, elem, id) {
   }
   else if (elem.dataset.draggable) {
     delete elem.dataset.draggable
+  }
+}
+
+function syncPeekable (peekables, elem, id) {
+  if (peekables[id]) {
+    elem.dataset.peekable = peekables[id]
+  }
+  else if (elem.dataset.peekable) {
+    delete elem.dataset.peekable
   }
 }
 

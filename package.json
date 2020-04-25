@@ -6,6 +6,7 @@
   "author": "Gilbert <gilbertbgarza@gmail.com>",
   "license": "MIT",
   "scripts": {
+    "start": "echo Not implemented. Try yarn dev",
     "dev": "budo src/index.js:dist/index.js --live",
     "test": "ospec src/games/**/*.test.js"
   },

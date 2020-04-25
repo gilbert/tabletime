@@ -270,7 +270,11 @@ droppable(Actor, DraggableId, DropZone, vote, [DraggableId, commit]) :-
   card(vote, _, _, _, DraggableId),
   DropZone = [player, Actor, vote].
 
-zone_hidden(P1, [player, P2, hand]) :- P1 \\== P2.
+can_peek(Player, CardId) :-
+  card(vote, _, _, [player, Player | _], CardId).
+
+can_peek(Player, CardId) :-
+  card(role, _, _, [player, Player, assigned_role], CardId).
 
 % % % % % % % % %
 % Player Actions
@@ -359,8 +363,8 @@ pluralize(N, Thing, Suffix, Out) :-
 %% token(Type, ZonePath, Id).
 :- dynamic(token/3).
 
-% zone_hidden(Onlooker, Zone).
-zone_hidden(_, _) :- false.
+% zone_hidden(Player, CardId).
+can_peek(_, _) :- false.
 
 try_act(Actor, Action, Args) :-
   action(Action, ReqLen, _),
@@ -536,6 +540,15 @@ set_config(Name, Value) :-
       }
     },
 
+    async getPeekables(player) {
+      const solutions = await session.query_all`can_peek(${player}, Id).`
+      const result = {}
+      solutions.forEach(row => {
+        result[row.Id] = true
+      })
+      return result
+    },
+
     async getDraggables(player) {
       const solutions = await session.query_all`draggable(${player}, Id).`
       const result = {}
@@ -589,21 +602,4 @@ function byCardContent(a,b) {
 }
 function byTokenContent(a,b) {
   return (a.zone+a.type).localeCompare(b.zone+b.type)
-}
-
-exports.playerBoardSpec = {
-  piles: {
-    assigned_role: {
-      pos: [0,0],
-      size: [200, 300],
-    },
-    vote: {
-      pos: [200, 0],
-      size: [200, 300],
-    },
-    quest: {
-      pos: [400, 0],
-      size: [200, 300],
-    },
-  }
 }

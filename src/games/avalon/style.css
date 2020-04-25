@@ -51,7 +51,7 @@ body {
 }
 .hand-container .player-name {
   position: absolute; top: 0; right: 0; bottom: 0; left: 0;
-  background: #1c160c url(/src/shared/assets/images/tileable-wood.png);
+  background: #1d1818;
   border: 4px solid #151311;
   font-size: 3rem;
   color: wheat;
