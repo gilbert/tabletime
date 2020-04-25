@@ -1,4 +1,4 @@
 const app = require('./shared/app')
-require('./shared/drag-drop')
+require('./shared/ui/drag-drop')
 
 app.start()

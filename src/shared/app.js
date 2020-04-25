@@ -1,7 +1,7 @@
 const Avalon = require('../games/avalon')
 // const panzoom = require('panzoom')
 // const Panzoom = require('@panzoom/panzoom')
-const ActionBar = require('./action-bar')
+const ActionBar = require('./ui/action-bar')
 const { zoneToSelector } = require('./util')
 
 const PLAYER_HAND_ZONE = /^player\/([^/]+)\/hand/

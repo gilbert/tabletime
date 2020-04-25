@@ -1,6 +1,6 @@
 const {eventstart, eventend, eventmove, eventcancel} = require('@composi/gestures')
-const {zoneToSelector} = require('./util')
-const app = require('./app')
+const {zoneToSelector} = require('../util')
+const app = require('../app')
 
 let dragElem = null
 let dropZone = null

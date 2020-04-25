@@ -1,5 +1,5 @@
 const tippy = require('tippy.js')
-const {escapeHtml} = require('./util')
+const {escapeHtml} = require('../util')
 const template = require('lodash/template')
 const templateSettings = require('lodash/templateSettings')
 
