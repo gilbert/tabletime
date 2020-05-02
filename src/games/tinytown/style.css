@@ -1,0 +1,125 @@
+:root {
+  --column-width: 550px;
+  --column-gap: 50px;
+  --table-padding: 100px;
+}
+
+body {
+  background-color: #000814;
+}
+#\$table {
+  background-color: #1c1300;
+  border-radius: 32px;
+
+  display: grid;
+  grid-template-columns: 1fr 1400px 1fr;
+  grid-template-rows: 1fr 1fr;
+  column-gap: var(--table-padding);
+  align-items: center;
+
+  width: calc(
+    var(--column-width) * 4 +
+    var(--column-gap) * 3 +
+    var(--table-padding) * 2
+  );
+  padding: var(--table-padding);
+  box-sizing: content-box;
+}
+
+.zone-shared {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+}
+.zone-board {
+  background: url(/src/games/tinytown/assets/board-1.jpg);
+  background-size: contain;
+  flex-shrink: 0;
+  width: 1400px;
+  height: 1400px;
+  border-radius: 16px;
+}
+
+.zone-shared .zone-vp_60 .token[data-type="vp_60"] {
+  width: 60px;
+  height: 60px;
+}
+.zone-shared .zone-vp_60 * + * {
+  margin-left: -30px;
+}
+.token[data-type="vp_60"] {
+  background-image: url(/src/games/tinytown/assets/token-vp-60.png);
+  width: 100px;
+  height: 100px;
+  filter: drop-shadow(1px 3px 0px #000000);
+}
+
+.zone-shared .zone-objective_cards {
+  position: relative;
+  width: calc(732px / 4);
+  height: calc(507px / 4);
+}
+.card[data-type="objective"] {
+  width: calc(732px / 4);
+  height: calc(507px / 4);
+  border-radius: 8px;
+  position: absolute; top: 0; left: 0;
+}
+.card[data-type="objective"] .card-back {
+  background-image: url(/src/games/tinytown/assets/objectives-back.jpg);
+}
+.card[data-type="objective"][data-name="approve"] .card-front { background-image: url(/src/games/tabletime/assets/objectives-back.jpg); }
+.card[data-type="objective"][data-name="reject"] .card-front { background-image: url(/src/games/tabletime/assets/objectives-back.jpg); }
+
+.token[data-type="first_player"] {
+  background-image: url(/src/games/tinytown/assets/token-first_player.png);
+  width: 109px;
+  height: 106px;
+  filter: drop-shadow(1px 3px 0px #000000);
+}
+
+.zone-shared .zone-coin_1 * + * {
+  margin-left: calc(-248px / 5);
+}
+.zone-shared .zone-coin_3 * + * {
+  margin-left: calc(-296px / 5);
+}
+.token[data-type="coin_1"] {
+  background-image: url(/src/games/tinytown/assets/token-coin_1.png);
+  width: calc(248px / 3);
+  height: calc(248px / 3);
+  /* filter: drop-shadow(1px 3px 0px #000000); */
+}
+.token[data-type="coin_3"] {
+  background-image: url(/src/games/tinytown/assets/token-coin_3.png);
+  width: calc(296px / 3);
+  height: calc(296px / 3);
+  /* filter: drop-shadow(1px 3px 0px #000000); */
+}
+
+.zone-shared .zone-resources .cube * + * {
+  margin-left: calc(-170px / 3 + 20px);
+}
+.token[data-type="wheat"] {
+  background-image: url(/src/games/tinytown/assets/token-wheat.png);
+  width: calc(170px / 3);
+  height: calc(197px / 3);
+  /* filter: drop-shadow(1px 3px 0px rgba(0,0,0,0.4)); */
+}
+.token[data-type="fish"] {
+  background-image: url(/src/games/tinytown/assets/token-fish.png);
+  width: calc(170px / 3);
+  height: calc(197px / 3);
+  /* filter: drop-shadow(1px 3px 0px rgba(0,0,0,0.4)); */
+}
+.token[data-type="wood"] {
+  background-image: url(/src/games/tinytown/assets/token-wood.png);
+  width: calc(170px / 3);
+  height: calc(197px / 3);
+  /* filter: drop-shadow(1px 3px 0px rgba(0,0,0,0.4)); */
+}
+.token[data-type="stone"] {
+  background-image: url(/src/games/tinytown/assets/token-stone.png);
+  width: calc(170px / 3);
+  height: calc(197px / 3);
+  /* filter: drop-shadow(1px 3px 0px rgba(0,0,0,0.4)); */
+}

@@ -1,4 +1,5 @@
-const Game = require('../games/avalon')
+// const Game = require('../games/avalon')
+const Game = require('../games/tinytown')
 
 const ActionBar = require('./ui/action-bar')
 const { zoneToSelector } = require('./util')
@@ -15,7 +16,8 @@ app.tableScale = 1
 app.currentPlayer = 'p1'
 
 app.sync = sync
-app.start = startAvalon
+app.start = startGame
+app.started = false
 app.findInHand = findInHand
 
 app.playerNames = {
@@ -31,6 +33,8 @@ app.playerNames = {
   p10: 'Player 10',
 }
 
+let elementsToMove = []
+
 async function startGame() {
   app.game = (game = Game.createGame())
   await Game.testSetup(game)
@@ -43,8 +47,8 @@ async function startGame() {
   //
   const padding = 100
   scale = app.tableScale = Math.max(
-    Math.min(1, (window.innerWidth - padding) / ($tableCanvas.offsetWidth - padding/2)),
-    Math.min(1, (window.innerHeight - padding) / ($tableCanvas.offsetHeight - padding/2)),
+    Math.min(1, (window.innerWidth - padding) / ($tableCanvas.offsetWidth - padding / 2)),
+    Math.min(1, (window.innerHeight - padding) / ($tableCanvas.offsetHeight - padding / 2)),
   )
 
   $table.style.transform = `scale(${scale})`
@@ -52,10 +56,11 @@ async function startGame() {
 
   $tableCanvas.dataset.originalWidth = $tableCanvas.offsetWidth
   $tableCanvas.dataset.originalHeight = $tableCanvas.offsetHeight
-  $tableCanvas.style.width = `${$tableCanvas.offsetWidth * scale + padding/2}px`
-  $tableCanvas.style.height = `${$tableCanvas.offsetHeight * scale + padding/2}px`
+  $tableCanvas.style.width = `${$tableCanvas.offsetWidth * scale + padding / 2}px`
+  $tableCanvas.style.height = `${$tableCanvas.offsetHeight * scale + padding / 2}px`
 
-  await game.start()
+  await game.setup()
+  // await game.start()
   // await game.act('p1', 'nominate', [114, 'p1']) // TEMP
   // await game.act('p1', 'nominate', [117, 'p2']) // TEMP
   // await game.act('p1', 'next_phase', []) // TEMP
@@ -91,7 +96,7 @@ async function sync() {
       addToTable(app, elem, card.zone)
     }
     else {
-      syncZone(elem, card.zone)
+      queueSyncZone(elem, card.zone)
     }
 
     elem.dataset.face = card.face
@@ -114,12 +119,14 @@ async function sync() {
       addToTable(app, elem, token.zone)
     }
     else {
-      syncZone(elem, token.zone)
+      queueSyncZone(elem, token.zone)
     }
 
     syncDraggable(draggables, elem, token.id)
     syncWithHand(app, elem)
   })
+
+  syncZones()
 
   await actionBar.sync()
 
@@ -129,7 +136,12 @@ async function sync() {
 
 function addToTable(app, elem, zone) {
   const zoneElem = document.querySelector(zoneToSelector(zone))
-  zoneElem.appendChild(elem)
+  if (zoneElem) {
+    zoneElem.appendChild(elem)
+  }
+  else {
+    console.error('[TableTime] Zone not found', zone, 'for item', elem.dataset)
+  }
 }
 
 function syncWithHand(app, elem) {
@@ -166,7 +178,7 @@ function syncWithHand(app, elem) {
   }
 }
 
-function syncZone (elem, newZone) {
+function queueSyncZone(elem, newZone) {
   const oldZone = elem.dataset.zone
   if (newZone === oldZone) return;
 
@@ -186,36 +198,73 @@ function syncZone (elem, newZone) {
     const new_y = handElem.dataset.dropY / scale
     // No need to delete dropX/Y as handElem will soon be removed by syncWithHand()
 
-    elem.classList.remove('npc')
-    void elem.offsetWidth; // recalc to avoid transition animation
+    // elementsToMove.push({
+    //   elem,
+    //   dest: { x: new_x - old_x, y: new_y - old_y }
+    // })
+    void elem.offsetWidth; // reflow to avoid transition animation
     elem.style.transform = `translate(${new_x - old_x}px, ${new_y - old_y}px)`
   }
 
   // Record position before moving element
+
   const bbox = elem.getBoundingClientRect()
+  console.log(elem.dataset, 'from', bbox)
   const old_x = bbox.x / scale
   const old_y = bbox.y / scale
-  const oldTranslate = (elem.style.transform || '').match(TRANSLATE_COORDS)
+  const oldTranslate = (elem.style.transform || '').match(TRANSLATE_COORDS) || [null, '0', '0']
 
-  const newParent = document.querySelector(zoneToSelector(newZone))
-  newParent.appendChild(elem)
-  elem.dataset.zone = newZone
+  // const newParent = document.querySelector(zoneToSelector(newZone))
 
-  if (oldTranslate) {
-    const [tx, ty] = oldTranslate.slice(1).map(Number)
-    const bbox_2 = elem.getBoundingClientRect()
-    const new_x = (bbox_2.x / scale) - tx
-    const new_y = (bbox_2.y / scale)  - ty
+  elementsToMove.push({
+    elem,
+    newParentElem: document.querySelector(zoneToSelector(newZone)),
+    old_x,
+    old_y,
+    oldTranslate,
+  })
 
-    elem.style.transform = `translate(${old_x - new_x}px, ${old_y - new_y}px)`
-    requestAnimationFrame(() => {
-      elem.classList.add('npc')
-      elem.style.transform = `translate(0px, 0px)`
-    })
-  }
+  // newParent.appendChild(elem)
+  // elem.dataset.zone = newZone
 }
 
-function syncDraggable (draggables, elem, id) {
+function syncZones() {
+  elementsToMove.forEach(({ elem }) => {
+    elem.classList.remove('npc')
+  })
+
+  void $table.offsetWidth; // reflow to avoid premature transition animations
+
+  elementsToMove.forEach(({ elem, newParentElem }) => {
+    newParentElem.appendChild(elem)
+  })
+
+  for (let { oldTranslate, old_x, old_y, elem } of elementsToMove) {
+    const [tx, ty] = oldTranslate.slice(1).map(Number)
+    const bbox_2 = elem.getBoundingClientRect()
+    console.log(elem.dataset, 'to', bbox_2)
+    const new_x = (bbox_2.x / scale) - tx
+    const new_y = (bbox_2.y / scale) - ty
+
+    console.log(old_x, old_y, new_x, new_y)
+
+    elem.style.transform = `translate(${old_x - new_x}px, ${old_y - new_y}px)`
+  }
+
+  void $table.offsetWidth; // reflow to avoid premature transition animations
+
+  elementsToMove.forEach(({ elem }) => {
+    elem.classList.add('npc')
+  })
+
+  void $table.offsetWidth; // reflow to ensure transition animations
+
+  elementsToMove.forEach(({ elem }) => {
+    elem.style.transform = `translate(0px, 0px)`
+  })
+}
+
+function syncDraggable(draggables, elem, id) {
   if (draggables[id]) {
     elem.dataset.draggable = draggables[id]
   }
@@ -224,7 +273,7 @@ function syncDraggable (draggables, elem, id) {
   }
 }
 
-function syncPeekable (peekables, elem, id) {
+function syncPeekable(peekables, elem, id) {
   if (peekables[id]) {
     elem.dataset.peekable = peekables[id]
   }
@@ -233,7 +282,7 @@ function syncPeekable (peekables, elem, id) {
   }
 }
 
-function findInHand (id) {
+function findInHand(id) {
   return $handBar.querySelector(`[data-id="${id}"]`)
 }
 

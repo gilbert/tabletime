@@ -63,6 +63,14 @@ exports.createGame = function createGame(code) {
       return errors.map(s => s.Error)
     },
 
+    async setup() {
+      const solutions = await session.query_all`setup_game.`
+      if (solutions.length > 1) {
+        console.warn(`[game.setup] Warning: Multiple solutions`, solutions)
+      }
+      return solutions.length > 0
+    },
+
     async start() {
       const solutions = await session.query_all`start_game.`
       if (solutions.length > 1) {
@@ -246,18 +254,29 @@ pluralize(1, Thing, _, Out) :-
 pluralize(N, Thing, Suffix, Out) :-
   atomic_list_concat([N, ' ', Thing, Suffix], Out).
 
+times(Count, Code)       :- forall(between(1, Count, _), Code).
+for(Start, End, Code)    :- forall(between(Start, End, _), Code).
+for(Start, End, N, Code) :- forall(between(Start, End, N), Code).
 
 %
 % Tabletime Engine
 %
 :- dynamic(player/1).
+:- dynamic(phase/1).
+:- dynamic(player_turn/1).
 :- dynamic(config/3).
 :- dynamic(config_invalid/3).
 :- dynamic(object_id/1).
-%% card(Type, Name, CardFace, ZonePath, Id).
+%% card(Type, Name, CardFace, Zone, Id).
 :- dynamic(card/5).
-%% token(Type, ZonePath, Id).
+%% token(Type, Zone, Id).
 :- dynamic(token/3).
+%% token(Type, Player, Zone, Id).
+:- dynamic(token/4).
+
+set_phase(S) :- retractall(phase(_)), assertz(phase(S)).
+
+player_count(N) :- count(player(_), N).
 
 % zone_hidden(Player, CardId).
 can_peek(_, _) :- false.
@@ -284,21 +303,34 @@ new_object_id(Id) :-
   retractall( object_id(_) ),
   assertz( object_id(NextId) ).
 
-new_card(Type, Name, CardFace, ZonePath) :-
+new_card(Type, Name, CardFace, Zone) :-
   new_object_id(Id),
-  assertz(card(Type, Name, CardFace, ZonePath, Id)).
+  assertz(card(Type, Name, CardFace, Zone, Id)).
 
-move_card(Id, NewZone, Face) :-
+move_card(Id, NewZone) :-
+  retract( card(Type, Name, CardFace, _, Id) ),
+  assertz( card(Type, Name, CardFace, NewZone, Id) ).
+
+move_card(Id, NewZone, CardFace) :-
   retract( card(Type, Name, _, _, Id) ),
-  assertz( card(Type, Name, Face, NewZone, Id) ).
+  assertz( card(Type, Name, CardFace, NewZone, Id) ).
 
-new_token(Type, ZonePath) :-
+new_token(Type, Zone) :-
   new_object_id(Id),
-  assertz(token(Type, ZonePath, Id)).
+  assertz(token(Type, Zone, Id)).
+
+new_token(Type, Player, Zone) :-
+  new_object_id(Id),
+  assertz(token(Type, Player, Zone, Id)).
 
 move_token(Id, NewZone) :-
   retract( token(Type, _, Id) ),
-  assertz( token(Type, NewZone, Id) ).
+  assertz( token(Type, NewZone, Id) ),
+  !.
+move_token(Id, NewZone) :-
+  retract( token(Type, Player, _, Id) ),
+  assertz( token(Type, Player, NewZone, Id) ),
+  !.
 
 config_option(random_seed, S) :- atomic(S).
 
@@ -313,4 +345,21 @@ set_config(Name, Value) :-
   config_option(Name, Value),
   retractall(config(Name, single, _)),
   assertz(config(Name, single, Value)).
+
+assign_next_turn_player :-
+  % Grab the next player that hasn't gone this goaround
+  player(Player), \\+ player_turn(Player), !,
+
+  % Mark them as current
+  asserta(player_turn(Player)).
+
+% This case occurs when all players have gone
+assign_next_turn_player :-
+  once(player(_)), % Ensure there is at least one player so we don't infinite loop.
+  retractall(player_turn(_)),
+  assign_next_turn_player.
+
+current_turn_player(P) :- once(player_turn(P)).
+
+
 `

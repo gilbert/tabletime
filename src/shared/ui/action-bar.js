@@ -21,6 +21,14 @@ module.exports = function ActionBar (app) {
     await app.sync()
   })
 
+  $actionBar.addEventListener('click', async e => {
+    if (!e.target.dataset['game-start']) return;
+
+    await app.game.start()
+    app.started = true
+    await app.sync()
+  })
+
   async function render() {
     todos = await app.game.getCurrentPhaseTodos()
 
@@ -40,19 +48,55 @@ module.exports = function ActionBar (app) {
       actionsHtml = ''
     }
 
+    let statusHTML
+    if (app.started) {
+      statusHTML = `
+        <div
+          class="flex items-center"
+          data-tippy-content="${
+            escapeHtml(todos.map(t => template(t)(app.playerNames)).join('<br />'))
+            || 'Ready to move on to next phase'
+          }"
+        >
+          Game Status
+          <div class="w-3 h-3 ml-2 ${
+            todos.length > 0 ? 'bg-orange-400' : 'bg-green-500 rounded-full'
+          }"></div>
+        </div>
+      `
+    }
+    else {
+      const errors = await app.game.checkReadyToStart()
+      if (errors.length) {
+        statusHTML = `
+          <div
+            class="flex items-center"
+            data-tippy-content="${
+              escapeHtml(errors.map(t => template(t)(app.playerNames)).join('<br />'))
+              || 'Ready to move on to next phase'
+            }"
+          >
+            Configuration Needed
+            <div class="w-3 h-3 ml-2 bg-orange-400"></div>
+          </div>
+
+        `
+      }
+      else {
+        statusHTML = `
+          <div
+            data-game-start="true"
+            class="flex item-center rounded-sm px-2 py-1 bg-gray-200 text-gray-800 cursor-pointer"
+          >
+            Start Game
+          </div>
+
+        `
+      }
+    }
+
     $actionBar.innerHTML = `
-      <div
-        class="flex items-center"
-        data-tippy-content="${
-          escapeHtml(todos.map(t => template(t)(app.playerNames)).join('<br />'))
-          || 'Ready to move on to next phase'
-        }"
-      >
-        Game Status
-        <div class="w-3 h-3 ml-2 ${
-          todos.length > 0 ? 'bg-orange-400' : 'bg-green-500 rounded-full'
-        }"></div>
-      </div>
+      ${statusHTML}
       <div class="flex-1 flex items-center justify-center">${actionsHtml}</div>
       <div>
         You are ${app.playerNames[app.currentPlayer]}

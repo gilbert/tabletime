@@ -6,10 +6,7 @@ exports.create = function() {
 :- use_module(library(lists)).
 :- use_module(library(js)).
 
-:- dynamic(phase/1).
 :- dynamic(king/1).
-:- dynamic(nominee/1).
-:- dynamic(vote/2).
 
 check_ready_start('This game only supports 5 to 10 players.') :-
   player_count(N),
@@ -45,15 +42,15 @@ todo(Todo) :-
 % % % % % % %
 % Game Setup
 %
+setup_game :-
+  set_phase([round, 0, setup]).
+
 start_game :-
   (config(random_seed, single, S) -> set_random(S); true),
-  set_phase([round, 0, setup]),
   assign_role_cards,
   setup_board,
   create_vote_cards,
   new_round.
-
-set_phase(S) :- retractall(phase(_)), assertz(phase(S)).
 
 setup_board :-
   player_count(PC),
@@ -229,9 +226,6 @@ party_size(10, 5, 5).
 %
 fails_required(PlayerCount, 4, 2) :- PlayerCount >= 7.
 fails_required(_, _, 1).
-
-player_count(N) :-
-  count(player(_), N).
 
 % % % % % % % %
 % Access Rules

@@ -103,6 +103,9 @@ body {
 /* * * *
  * Cards & Tokens
  */
+.card, .token {
+  overflow: hidden;
+}
 .card.npc, .token.npc {
   transition: all 0.5s ease-out;
 }
