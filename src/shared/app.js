@@ -1,5 +1,6 @@
 // const Game = require('../games/avalon')
-const Game = require('../games/tinytown')
+// const Game = require('../games/tinytown')
+const Game = require('../games/kingmaker')
 
 const ActionBar = require('./ui/action-bar')
 const { zoneToSelector } = require('./util')
@@ -37,10 +38,15 @@ let elementsToMove = []
 
 async function startGame() {
   app.game = (game = Game.createGame())
-  await Game.testSetup(game)
+  if (await Game.testSetup(game)) {
+    app.started = true
+  }
+  else {
+    await game.setup()
+  }
 
   $table.innerHTML = await Game.views.table(app)
-  $handBar.innerHTML = await Game.views.handBar(app)
+  $handbar.innerHTML = await Game.views.handBar(app)
 
   //
   // TODO, SOMEONE: Math here is off, could definitely be more accurate.
@@ -52,21 +58,16 @@ async function startGame() {
   )
 
   $table.style.transform = `scale(${scale})`
-  $handBar.style.transform = `scale(${scale}) translateY(100%)`
+  $handbar.style.transform = `scale(${scale}) translateY(100%)`
 
   $tableCanvas.dataset.originalWidth = $tableCanvas.offsetWidth
   $tableCanvas.dataset.originalHeight = $tableCanvas.offsetHeight
   $tableCanvas.style.width = `${$tableCanvas.offsetWidth * scale + padding / 2}px`
   $tableCanvas.style.height = `${$tableCanvas.offsetHeight * scale + padding / 2}px`
 
-  await game.setup()
-  // await game.start()
-  // await game.act('p1', 'nominate', [114, 'p1']) // TEMP
-  // await game.act('p1', 'nominate', [117, 'p2']) // TEMP
-  // await game.act('p1', 'next_phase', []) // TEMP
   actionBar = ActionBar(app)
   // Put this after the `await` so we don't have a crazy zoom animation on page load
-  $handBar.classList.add('initialized')
+  $handbar.classList.add('initialized')
   sync()
 }
 
@@ -131,7 +132,7 @@ async function sync() {
   await actionBar.sync()
 
   const isHandAvailable = Object.keys(draggables).some(id => findInHand(id))
-  $handBar.style.transform = `scale(${scale}) translateY(${isHandAvailable ? '0%' : '100%'})`
+  $handbar.style.transform = `scale(${scale}) translateY(${isHandAvailable ? '0%' : '100%'})`
 }
 
 function addToTable(app, elem, zone) {
@@ -154,9 +155,10 @@ function syncWithHand(app, elem) {
   const newZone = elem.dataset.zone
 
   if (existing && oldZone !== newZone) {
-    // $handBar only handles one zone.
-    // Therefore, if it's not in this zone, we don't care about it.
-    existing.remove()
+    // $handbar only handles one zone.
+    // Therefore, if it's not in this zone, it's not in the handbar anymore.
+    // HOWEVER, we still need this elem to be in the DOM for later calculation.
+    // Other code will remove this element later.
   }
   else if (existing) {
     // Sync state
@@ -174,7 +176,7 @@ function syncWithHand(app, elem) {
     // Add to hand bar
     const clone = elem.cloneNode(true)
     delete clone.id
-    $handBar.querySelector(zoneToSelector(elem.dataset.zone)).appendChild(clone)
+    $handbar.querySelector(zoneToSelector(elem.dataset.zone)).appendChild(clone)
   }
 }
 
@@ -190,42 +192,46 @@ function queueSyncZone(elem, newZone) {
 
     // ASSUMPTION: Original element is at translate(0,0)
     // Therefore we only need to take the simple difference.
-    const elem_bbox = elem.getBoundingClientRect()
-    const old_x = elem_bbox.x / scale
-    const old_y = elem_bbox.y / scale
-
     const new_x = handElem.dataset.dropX / scale
     const new_y = handElem.dataset.dropY / scale
     // No need to delete dropX/Y as handElem will soon be removed by syncWithHand()
 
-    // elementsToMove.push({
-    //   elem,
-    //   dest: { x: new_x - old_x, y: new_y - old_y }
-    // })
-    void elem.offsetWidth; // reflow to avoid transition animation
-    elem.style.transform = `translate(${new_x - old_x}px, ${new_y - old_y}px)`
+    elementsToMove.push({
+      type: 'from-hand',
+      elem,
+      handElem,
+      newParentElem: document.querySelector(zoneToSelector(newZone)),
+      new_x,
+      new_y,
+      // oldTranslate: [null, `${new_x - old_x}px`, `${new_y - old_y}px`]
+    })
+    // void elem.offsetWidth; // reflow to avoid transition animation
+    // elem.style.transform = `translate(${new_x - old_x}px, ${new_y - old_y}px)`
+    return
   }
+  else {
+    // Record position before moving element
 
-  // Record position before moving element
+    const bbox = elem.getBoundingClientRect()
+    console.log(elem.dataset, 'from', bbox)
+    const old_x = bbox.x / scale
+    const old_y = bbox.y / scale
+    const oldTranslate = (elem.style.transform || '').match(TRANSLATE_COORDS) || [null, '0', '0']
 
-  const bbox = elem.getBoundingClientRect()
-  console.log(elem.dataset, 'from', bbox)
-  const old_x = bbox.x / scale
-  const old_y = bbox.y / scale
-  const oldTranslate = (elem.style.transform || '').match(TRANSLATE_COORDS) || [null, '0', '0']
+    // const newParent = document.querySelector(zoneToSelector(newZone))
 
-  // const newParent = document.querySelector(zoneToSelector(newZone))
+    elementsToMove.push({
+      type: 'from-table',
+      elem,
+      newParentElem: document.querySelector(zoneToSelector(newZone)),
+      old_x,
+      old_y,
+      oldTranslate,
+    })
 
-  elementsToMove.push({
-    elem,
-    newParentElem: document.querySelector(zoneToSelector(newZone)),
-    old_x,
-    old_y,
-    oldTranslate,
-  })
-
-  // newParent.appendChild(elem)
-  // elem.dataset.zone = newZone
+    // newParent.appendChild(elem)
+    // elem.dataset.zone = newZone
+  }
 }
 
 function syncZones() {
@@ -239,16 +245,32 @@ function syncZones() {
     newParentElem.appendChild(elem)
   })
 
-  for (let { oldTranslate, old_x, old_y, elem } of elementsToMove) {
-    const [tx, ty] = oldTranslate.slice(1).map(Number)
-    const bbox_2 = elem.getBoundingClientRect()
-    console.log(elem.dataset, 'to', bbox_2)
-    const new_x = (bbox_2.x / scale) - tx
-    const new_y = (bbox_2.y / scale) - ty
+  for (let row of elementsToMove) {
+    let target_x, target_y
+    if (row.type === 'from-table') {
+      const {oldTranslate, old_x, old_y, new_x, new_y, elem} = row
+      const [tx, ty] = oldTranslate.slice(1).map(Number)
+      const bbox_2 = elem.getBoundingClientRect()
+      console.log(elem.dataset, 'to', bbox_2)
+      new_x = (bbox_2.x / scale) - tx
+      new_y = (bbox_2.y / scale) - ty
 
-    console.log(old_x, old_y, new_x, new_y)
+      target_x = old_x - new_x
+      target_y = old_y - new_y
+    }
+    else if (row.type === 'from-hand') {
+      const {elem, handElem, new_x, new_y} = row
+      const elem_bbox = elem.getBoundingClientRect()
+      const old_x = elem_bbox.x / scale
+      const old_y = elem_bbox.y / scale
+      console.log('x', old_x, new_x, elem_bbox)
+      console.log('y', old_y, new_y, elem_bbox)
+      target_x = new_x - old_x - (window.scrollX / scale)
+      target_y = new_y - old_y - (window.scrollY / scale)
+      handElem.remove()
+    }
 
-    elem.style.transform = `translate(${old_x - new_x}px, ${old_y - new_y}px)`
+    row.elem.style.transform = `translate(${target_x}px, ${target_y}px)`
   }
 
   void $table.offsetWidth; // reflow to avoid premature transition animations
@@ -283,7 +305,7 @@ function syncPeekable(peekables, elem, id) {
 }
 
 function findInHand(id) {
-  return $handBar.querySelector(`[data-id="${id}"]`)
+  return $handbar.querySelector(`[data-id="${id}"]`)
 }
 
 function objectDomId(id) {

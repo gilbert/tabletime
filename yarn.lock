@@ -2560,7 +2560,7 @@ syntax-error@^1.1.1:
 
 tau-prolog@gilbert/tau-prolog:
   version "0.2.81"
-  resolved "https://codeload.github.com/gilbert/tau-prolog/tar.gz/492109e4affd332ca2ad3d562244ed4eaac7f863"
+  resolved "https://codeload.github.com/gilbert/tau-prolog/tar.gz/8a9b409d1f27020faf19eaca02aab69448d5aa97"
   dependencies:
     qunit "^2.8.0"
     readline-sync "1.4.9"

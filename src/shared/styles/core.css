@@ -7,7 +7,7 @@ body {
 #\$tableCanvas {
   padding: 50px;
 }
-#\$table {
+.table {
   background: url(/src/shared/assets/images/tileable-wood.png);
   transform-origin: 0 0;
   -webkit-user-select: none; /* Safari */
@@ -22,7 +22,7 @@ body {
   -ms-user-select: none; /* IE10+/Edge */
   user-select: none; /* Standard */
 }
-#\$handBar {
+#\$handbar {
   position: fixed; right: 0; bottom: 48px; left: 0;
   z-index: 99;
   -webkit-user-select: none; /* Safari */
@@ -33,10 +33,10 @@ body {
   justify-content: center;
   transform-origin: center bottom;
 }
-#\$handBar.initialized {
+#\$handbar.initialized {
   transition: transform 0.375s;
 }
-#\$handBar .zone-hand {
+#\$handbar .zone-hand {
   background-color: rgba(0,0,0,0.3);
   padding: 20px 30px 0;
   border-radius: 5px 5px 0 0;
@@ -48,6 +48,11 @@ body {
 #\$itemViewer.-viewing {
   display: block;
   position: fixed; top: 0; right: 0; bottom: 0; left: 0;
+}
+#\$itemViewer .card,
+#\$itemViewer .token {
+  transform-origin: top left;
+  transform: scale(1.5);
 }
 #\$itemViewer .card .card-flipper {
   transition: none;

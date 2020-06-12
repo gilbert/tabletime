@@ -1,5 +1,6 @@
 const o = require("ospec")
 const {create} = require('./game')
+const {expectError, expectReadyError, expectNoErrors, noId, times} = require('../../shared/test-helpers')
 
 o.spec('Standard API', async function () {
   o('adds players', async function() {
@@ -126,156 +127,141 @@ async function createFivePlayerGame() {
   return game
 }
 
-o.only('runs through a game', async function() {
-  const game = await createFivePlayerGame()
-  const state = await game.getState()
+o.spec('Avalon', function () {
 
-  function playerHand(player, role) {
-    return [
-      { zone: `player/${player}/assigned_role`, type: 'role', name: role, face: 'down' },
-      { zone: `player/${player}/hand`, type: 'vote', name: 'approve', face: 'down' },
-      { zone: `player/${player}/hand`, type: 'vote', name: 'reject', face: 'down' },
-    ]
-  }
+  o('runs through a game', async function() {
+    const game = await createFivePlayerGame()
+    const state = await game.getState()
 
-  o(state.phase).deepEquals(['round', 1, 'nominate'])
-
-  o(state.cards.map(noId)).deepEquals([
-    ...playerHand('p1', 'assassin'),
-    ...playerHand('p2', 'minion_1'),
-    ...playerHand('p3', 'servant_2'),
-    ...playerHand('p4', 'servant_1'),
-    ...playerHand('p5', 'merlin'),
-    ...times(5, { zone: 'shared/standby/mission_tokens', type: 'mission', face: 'up' }),
-    ...times(3, { zone: 'shared/standby/quest_cards', type: 'quest', name: 'fail', face: 'down' }),
-    ...times(3, { zone: 'shared/standby/quest_cards', type: 'quest', name: 'success', face: 'down' }),
-  ])
-
-  o(state.tokens.map(noId)).deepEquals([
-    { zone: 'player/p1/status', type: 'king' },
-    ...times(2, { zone: 'player/p1/unused_nominations', type: 'nomination' }),
-    { zone: 'shared/board/reject_count/0', type: 'reject' },
-    ...times(1, { zone: 'shared/standby/nomination_tokens', type: 'nomination' }),
-  ])
-
-  //
-  // Nominations 1
-  //
-  o(await game.getCurrentPhaseTodos()).deepEquals([
-    'King must nominate 2 more players'
-  ])
-
-  o(await game.getDraggables('p2')).deepEquals({})
-  o(await game.getAvailableActions('p2')).deepEquals([])
-
-  o(await game.getDraggables('p1')).deepEquals({ 114: true, 117: true })
-  o(await game.getDroppables('p1', 114)).deepEquals({
-    zones: {
-      'player/p1/status': ['nominate', [114, 'p1']],
-      'player/p2/status': ['nominate', [114, 'p2']],
-      'player/p3/status': ['nominate', [114, 'p3']],
-      'player/p4/status': ['nominate', [114, 'p4']],
-      'player/p5/status': ['nominate', [114, 'p5']],
+    function playerHand(player, role) {
+      return [
+        { zone: `player/${player}/assigned_role`, type: 'role', name: role, face: 'down' },
+        { zone: `player/${player}/hand`, type: 'vote', name: 'approve', face: 'down' },
+        { zone: `player/${player}/hand`, type: 'vote', name: 'reject', face: 'down' },
+      ]
     }
+
+    o(state.phase).deepEquals(['round', 1, 'nominate'])
+
+    o(state.cards.map(noId)).deepEquals([
+      ...playerHand('p1', 'assassin'),
+      ...playerHand('p2', 'minion_1'),
+      ...playerHand('p3', 'servant_2'),
+      ...playerHand('p4', 'servant_1'),
+      ...playerHand('p5', 'merlin'),
+      ...times(5, { zone: 'shared/standby/mission_tokens', type: 'mission', face: 'up' }),
+      ...times(3, { zone: 'shared/standby/quest_cards', type: 'quest', name: 'fail', face: 'down' }),
+      ...times(3, { zone: 'shared/standby/quest_cards', type: 'quest', name: 'success', face: 'down' }),
+    ])
+
+    o(state.tokens.map(noId)).deepEquals([
+      { zone: 'player/p1/status', type: 'king' },
+      ...times(2, { zone: 'player/p1/unused_nominations', type: 'nomination' }),
+      { zone: 'shared/board/reject_count/0', type: 'reject' },
+      ...times(1, { zone: 'shared/standby/nomination_tokens', type: 'nomination' }),
+    ])
+
+    //
+    // Nominations 1
+    //
+    o(await game.getCurrentPhaseTodos()).deepEquals([
+      'King must nominate 2 more players'
+    ])
+
+    o(await game.getDraggables('p2')).deepEquals({})
+    o(await game.getAvailableActions('p2')).deepEquals([])
+
+    o(await game.getDraggables('p1')).deepEquals({ 114: true, 117: true })
+    o(await game.getDroppables('p1', 114)).deepEquals({
+      zones: {
+        'player/p1/status': ['nominate', [114, 'p1']],
+        'player/p2/status': ['nominate', [114, 'p2']],
+        'player/p3/status': ['nominate', [114, 'p3']],
+        'player/p4/status': ['nominate', [114, 'p4']],
+        'player/p5/status': ['nominate', [114, 'p5']],
+      }
+    })
+    o(await game.getAvailableActions('p1')).deepEquals([
+      { name: 'nominate', type: 'drag', label: 'nominate' },
+    ])
+
+    o(await game.act('p1', 'nominate', [114, 'p2'])).equals(true)
+
+    o(await game.getCurrentPhaseTodos()).deepEquals([
+      'King must nominate 1 more player'
+    ])
+
+    o(await game.getDraggables('p1')).deepEquals({ 117: true })
+    o(await game.getDroppables('p1', 117)).deepEquals({
+      zones: {
+        'player/p1/status': ['nominate', [117, 'p1']],
+        'player/p3/status': ['nominate', [117, 'p3']],
+        'player/p4/status': ['nominate', [117, 'p4']],
+        'player/p5/status': ['nominate', [117, 'p5']],
+      }
+    })
+
+    o(await game.act('p1', 'nominate', [117, 'p5'])).equals(true)
+
+    o(await game.getDraggables('p1')).deepEquals({})
+
+    o(await game.getCurrentPhaseTodos()).deepEquals([])
+    o(await game.getAvailableActions('p1')).deepEquals([
+      { name: 'next_phase', type: 'button', label: 'Proceed to Voting Phase' },
+    ])
+    o(await game.getAvailableActions('p2')).deepEquals([])
+
+    //
+    // Voting
+    //
+    o(await game.act('p1', 'next_phase', [])).equals(true)
+
+    o((await game.getState()).phase).deepEquals(['round', 1, 'vote'])
+
+    o(await game.getAvailableActions('p1')).deepEquals([
+      { name: 'vote', type: 'drag', label: 'vote' }
+    ])
+    o(await game.getAvailableActions('p2')).deepEquals([
+      { name: 'vote', type: 'drag', label: 'vote' }
+    ])
+
+    o(await game.getDraggables('p1')).deepEquals({ 121: true, 122: true })
+    o(await game.getDroppables('p1', 121)).deepEquals({
+      zones: {
+        'player/p1/vote': ['vote', [121, 'commit']]
+      }
+    })
+
+    o(await game.getCurrentPhaseTodos()).deepEquals([
+      '{{p1}} must cast a vote',
+      '{{p2}} must cast a vote',
+      '{{p3}} must cast a vote',
+      '{{p4}} must cast a vote',
+      '{{p5}} must cast a vote',
+    ])
+
+    //
+    // Reject vote
+    //
+    // console.log(await game.getDraggables('p3'))
+    // game.debug`card(A,B,C,D,121).`
+    o(await game.act('p1', 'vote', [122, 'commit'])).equals(true)
+    o(await game.act('p2', 'vote', [124, 'commit'])).equals(true)
+    o(await game.act('p3', 'vote', [126, 'commit'])).equals(true)
+    o(await game.act('p4', 'vote', [127, 'commit'])).equals(true)
+    o(await game.act('p5', 'vote', [129, 'commit'])).equals(true)
+
+    o(await game.getCurrentPhaseTodos()).deepEquals([])
+
+    //
+    // Next round
+    //
+    o(await game.act('p1', 'next_phase', [])).equals(true)
+    o(state.phase).deepEquals(['round', 2, 'nominate'])
+
+
+    //
+    // Nominations 2
+    //
   })
-  o(await game.getAvailableActions('p1')).deepEquals([
-    { name: 'nominate', type: 'drag', label: 'nominate' },
-  ])
-
-  o(await game.act('p1', 'nominate', [114, 'p2'])).equals(true)
-
-  o(await game.getCurrentPhaseTodos()).deepEquals([
-    'King must nominate 1 more player'
-  ])
-
-  o(await game.getDraggables('p1')).deepEquals({ 117: true })
-  o(await game.getDroppables('p1', 117)).deepEquals({
-    zones: {
-      'player/p1/status': ['nominate', [117, 'p1']],
-      'player/p3/status': ['nominate', [117, 'p3']],
-      'player/p4/status': ['nominate', [117, 'p4']],
-      'player/p5/status': ['nominate', [117, 'p5']],
-    }
-  })
-
-  o(await game.act('p1', 'nominate', [117, 'p5'])).equals(true)
-
-  o(await game.getDraggables('p1')).deepEquals({})
-
-  o(await game.getCurrentPhaseTodos()).deepEquals([])
-  o(await game.getAvailableActions('p1')).deepEquals([
-    { name: 'next_phase', type: 'button', label: 'Proceed to Voting Phase' },
-  ])
-  o(await game.getAvailableActions('p2')).deepEquals([])
-
-  //
-  // Voting
-  //
-  o(await game.act('p1', 'next_phase', [])).equals(true)
-
-  o((await game.getState()).phase).deepEquals(['round', 1, 'vote'])
-
-  o(await game.getAvailableActions('p1')).deepEquals([
-    { name: 'vote', type: 'drag', label: 'vote' }
-  ])
-  o(await game.getAvailableActions('p2')).deepEquals([
-    { name: 'vote', type: 'drag', label: 'vote' }
-  ])
-
-  o(await game.getDraggables('p1')).deepEquals({ 121: true, 122: true })
-  o(await game.getDroppables('p1', 121)).deepEquals({
-    zones: {
-      'player/p1/vote': ['vote', [121, 'commit']]
-    }
-  })
-
-  o(await game.getCurrentPhaseTodos()).deepEquals([
-    '{{p1}} must cast a vote',
-    '{{p2}} must cast a vote',
-    '{{p3}} must cast a vote',
-    '{{p4}} must cast a vote',
-    '{{p5}} must cast a vote',
-  ])
-
-  //
-  // Reject vote
-  //
-  // console.log(await game.getDraggables('p3'))
-  // game.debug`card(A,B,C,D,121).`
-  o(await game.act('p1', 'vote', [122, 'commit'])).equals(true)
-  o(await game.act('p2', 'vote', [124, 'commit'])).equals(true)
-  o(await game.act('p3', 'vote', [126, 'commit'])).equals(true)
-  o(await game.act('p4', 'vote', [127, 'commit'])).equals(true)
-  o(await game.act('p5', 'vote', [129, 'commit'])).equals(true)
-
-  o(await game.getCurrentPhaseTodos()).deepEquals([])
-
-  //
-  // Next round
-  //
-  o(await game.act('p1', 'next_phase', [])).equals(true)
-  o(state.phase).deepEquals(['round', 2, 'nominate'])
 })
-
-//
-// Test helpers
-//
-async function expectError(regex, errors, expectToBePresent=true) {
-  const has = errors.some(e => regex.test(e))
-  if (!has && expectToBePresent) {
-    console.log('Did not have error', regex, ':\n', errors)
-  }
-  o(has).equals(expectToBePresent)
-}
-async function expectReadyError(regex, game, expectToBePresent=true) {
-  await expectError(regex, await game.checkReadyToStart(), expectToBePresent)
-}
-function expectNoErrors(errors) {
-  o(errors).deepEquals([])
-}
-function noId({id, ...rest}) {
-  return rest
-}
-function times(n, obj) {
-  return Array(n).fill(obj)
-}

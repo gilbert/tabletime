@@ -285,7 +285,7 @@ available_action(Actor, next_phase, []) :-
   current_king(Actor),
   \\+ todo(_).
 
-act(next_phase, _, []) :-
+act(_, next_phase, []) :-
   phase([round, N, nominate]),
   set_phase([round, N, vote]).
 
@@ -323,7 +323,7 @@ available_action(Actor, vote, [Source]) :-
 available_action(Actor, vote, [Source, commit]) :-
   available_action(Actor, vote, [Source]).
 
-act(vote, Actor, [Source, commit]) :-
+act(Actor, vote, [Source, commit]) :-
   move_card(Source, [player, Actor, vote], down).
   `)
 }

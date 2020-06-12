@@ -11,7 +11,7 @@
 body {
   background-color: #000814;
 }
-#\$table {
+.table {
   background-color: #1c1300;
   border-radius: 32px;
 
@@ -72,12 +72,12 @@ body {
   left: 50%;
 }
 
-.hand-bar .zone-hand {
+.handbar .zone-hand {
   display: flex;
   align-items: flex-end;
   justify-content: center;
 }
-.hand-bar .zone-hand .card[data-type="vote"] {
+.handbar .zone-hand .card[data-type="vote"] {
   width: 130px;
   height: 170px;
 }

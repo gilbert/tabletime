@@ -1,0 +1,113 @@
+:root {
+  --column-width: 350px;
+  --column-gap: 50px;
+  --table-padding: 100px;
+
+  --card-width: calc(190px * .75);
+  --card-height: calc(300px * .75);
+}
+
+body {
+  background-color: #000814;
+}
+.table {
+  background-color: #1c1300;
+  border-radius: 32px;
+
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  column-gap: var(--table-padding);
+  align-items: center;
+
+  width: calc(
+    var(--column-width) * 4 +
+    var(--column-gap) * 3 +
+    var(--table-padding) * 2
+  );
+  padding: var(--table-padding);
+  box-sizing: content-box;
+}
+
+.table, .zone-shared {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.zone-shared,
+.zone-trash        { grid-row: 1; grid-column: 2; }
+[data-player="p1"] { grid-row: 1; grid-column: 1; }
+[data-player="p2"] { grid-row: 1; grid-column: 3; }
+[data-player="p3"] { grid-row: 2; grid-column: 1; }
+[data-player="p4"] { grid-row: 2; grid-column: 3; }
+[data-player="p5"] { grid-row: 2; grid-column: 2; }
+
+.zone-chosen, .zone-trash {
+  width: var(--card-width);
+  height: var(--card-height);
+}
+
+.zone-court {
+  display: flex;
+}
+
+.table .zone-hand {
+  width: var(--card-width);
+  height: var(--card-height);
+  position: relative;
+}
+.table .zone-hand .card {
+  position: absolute; top: 0; left: 0;
+}
+
+.handbar .zone-hand {
+  display: flex;
+}
+.handbar .zone-hand .card-flipper {
+  transform: rotateY(0) !important;
+}
+
+.card[data-type^="p"] {
+  width: var(--card-width);
+  height: var(--card-height);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.card[data-type^="p"] .card-front,
+.card[data-type^="p"] .card-back {
+  background-size: calc(var(--card-width) * 4) calc(var(--card-height) * 4);
+  background-position: calc(var(--x) * var(--card-width) * -1) calc(var(--y) * var(--card-height) * -1);
+}
+.card[data-type^="p"] .card-back { --x: 3; --y: 3; }
+
+.card[data-type^="p"][data-name="royalty/1"]  .card-front { --x: 0; --y: 0; }
+.card[data-type^="p"][data-name="royalty/2"]  .card-front { --x: 1; --y: 0; }
+.card[data-type^="p"][data-name="royalty/3"]  .card-front { --x: 2; --y: 0; }
+.card[data-type^="p"][data-name="attack/p1"]  .card-front { --x: 3; --y: 0; }
+
+.card[data-type^="p"][data-name="attack/p2"]  .card-front { --x: 0; --y: 1; }
+.card[data-type^="p"][data-name="attack/p3"]  .card-front { --x: 1; --y: 1; }
+.card[data-type^="p"][data-name="attack/p4"]  .card-front { --x: 2; --y: 1; }
+.card[data-type^="p"][data-name="attack/p5"]  .card-front { --x: 3; --y: 1; }
+
+.card[data-type^="p"][data-name="jester"]     .card-front { --x: 0; --y: 2; }
+.card[data-type^="p"][data-name="seer"]       .card-front { --x: 1; --y: 2; }
+.card[data-type^="p"][data-name="marshals"]   .card-front { --x: 2; --y: 2; }
+.card[data-type^="p"][data-name="thief"]      .card-front { --x: 3; --y: 2; }
+
+.card[data-type^="p"][data-name="gold"]       .card-front { --x: 0; --y: 3; }
+.card[data-type^="p"][data-name="banner"]     .card-front { --x: 1; --y: 3; }
+.card[data-type^="p"][data-name="fanatic"]    .card-front { --x: 2; --y: 3; }
+
+.card[data-type="p1"] .card-back,
+.card[data-type="p1"] .card-front { background-image: url(/src/games/kingmaker/assets/cards-blue.png); }
+.card[data-type="p2"] .card-back,
+.card[data-type="p2"] .card-front { background-image: url(/src/games/kingmaker/assets/cards-red.png); }
+.card[data-type="p3"] .card-back,
+.card[data-type="p3"] .card-front { background-image: url(/src/games/kingmaker/assets/cards-purple.png); }
+.card[data-type="p4"] .card-back,
+.card[data-type="p4"] .card-front { background-image: url(/src/games/kingmaker/assets/cards-black.png); }
+.card[data-type="p5"] .card-back,
+.card[data-type="p5"] .card-front { background-image: url(/src/games/kingmaker/assets/cards-orange.png); }

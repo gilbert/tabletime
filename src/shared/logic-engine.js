@@ -91,12 +91,12 @@ exports.createGame = function createGame(code) {
       `).map(row => {
         const card = {
           id:   row.Id,
-          type: row.Type,
+          type: identifierTermToString(row.Type),
           face: row.Face,
           zone: row.Zone.join('/'),
         }
         if (row.Name !== 'NONE') {
-          card.name = row.Name
+          card.name = identifierTermToString(row.Name)
         }
         return card
       })
@@ -108,7 +108,7 @@ exports.createGame = function createGame(code) {
       `).map(row => {
         return {
           id:   row.Id,
-          type: row.Type,
+          type: identifierTermToString(row.Type),
           zone: row.Zone.join('/'),
         }
       })
@@ -258,6 +258,39 @@ times(Count, Code)       :- forall(between(1, Count, _), Code).
 for(Start, End, Code)    :- forall(between(Start, End, _), Code).
 for(Start, End, N, Code) :- forall(between(Start, End, N), Code).
 
+count_all([], []).
+count_all([X|Xs], Counts) :-
+  count_all(Xs, Counts0),
+  \+ member([X,_], Counts0),
+  Counts = [[X,1] | Counts0].
+
+count_all([X|Xs], Counts) :-
+  count_all(Xs, Counts0),
+  member([X,N0], Counts0),
+  exclude(member(X), Counts0, Counts1),
+  N is N0 + 1,
+  Counts = [[X,N] | Counts1].
+
+
+cmp_default(X, X).
+
+maxes([X|Xs], Rs) :-
+  maxes(cmp_default, Xs, [X], Rs).
+
+maxes(Cmp, [X|Xs], Rs) :-
+  maxes(Cmp, Xs, [X], Rs).
+
+maxes(_, [], Rs, Rs).
+maxes(Cmp, [X|Xs], [CurrentMax|CMs], Rs) :-
+  call(Cmp, X, X_cmp),
+  call(Cmp, CurrentMax, CM_cmp),
+  (
+    X_cmp > CM_cmp -> maxes(Xs, [X], Rs);
+    X_cmp = CM_cmp -> maxes(Xs, [CurrentMax,X|CMs], Rs);
+    maxes(Xs, [CurrentMax|CMs], Rs)
+  ).
+
+
 %
 % Tabletime Engine
 %
@@ -285,8 +318,9 @@ try_act(Actor, Action, Args) :-
   action(Action, ReqLen, _),
   length(Args, ReqLen),
   available_action(Actor, Action, Args),
-  act(Action, Actor, Args).
+  act(Actor, Action, Args).
 
+% TODO: Make this consistent
 % act(Actor, Action, Args)
 act(_, _, _) :- false.
 action(_, _, _) :- false.
@@ -360,6 +394,8 @@ assign_next_turn_player :-
   assign_next_turn_player.
 
 current_turn_player(P) :- once(player_turn(P)).
-
-
 `
+
+function identifierTermToString(term) {
+  return Array.isArray(term) ? term.join('/') : term
+}

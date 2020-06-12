@@ -6,7 +6,7 @@ exports.table = async (app) => `
     <div class="flex items-center justify-center mb-4">
       <div class="zone-vp_60 flex"></div>
       <div class="zone-objective_cards ml-10"></div>
-      <div class="zone-first_player ml-8"></div>
+      <div class="zone-first_player_token ml-8"></div>
     </div>
     <div class="zone-board">
       <div class="zone-map">
@@ -26,8 +26,8 @@ exports.table = async (app) => `
     </div>
     <div class="zone-resources mt-6">
       <div class="flex items-center">
-        <div class="zone-coin_3 flex"></div>
-        <div class="zone-coin_1 flex ml-4"></div>
+        <div class="zone-coin_3"></div>
+        <div class="zone-coin_1 ml-4"></div>
       </div>
       <div class="pt-6"></div>
       <div class="flex">

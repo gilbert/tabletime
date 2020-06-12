@@ -16,6 +16,7 @@ document.addEventListener('keydown', e => {
   if (e.altKey && item) {
     const clone = item.cloneNode(true)
     delete clone.id
+    clone.style = ''
     $itemViewer.innerHTML = ''
     $itemViewer.appendChild(clone)
     $itemViewer.classList.add('-viewing')

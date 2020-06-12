@@ -13,6 +13,7 @@ Coming soon.
 ```bash
 $ yarn install
 $ yarn test
+$ yarn dev
 ```
 
 ## Resources

@@ -38,7 +38,7 @@ exports.table = async (app) => `
 `
 
 exports.handBar = async (app) => `
-  <!-- Mirror a normal player hand to reuse relevant styles -->
+  <!-- This must match card zones -->
   <div class="zone-player">
     <div class="zone-${app.currentPlayer}">
       <div class="zone-hand"></div>

@@ -25,7 +25,7 @@ setup_game :-
   ),
 
   new_token(round, [shared, board, round, 1]),
-  new_token(first_player, [shared, first_player]),
+  new_token(first_player, [shared, first_player_token]),
 
   % TODO: Choose random buildings based on config
   forall(bird(BuildingId),
@@ -68,6 +68,22 @@ setup_player(Player) :-
   new_token(vp, Player, [shared, board, vp, 0]),
   true.
 
+%
+% Next Phase
+%
+available_action(Actor, next_phase, []) :-
+  current_turn_player(Actor),
+  \\+ todo(_).
+
+act(_, next_phase, []) :-
+  phase([round, N, nominate]),
+  set_phase([round, N, vote]).
+
+todo(Todo) :-
+  phase([round, _, player, CurrentPlayer, choose_action]),
+  atomic_list_concat(['{{', CurrentPlayer, '}} must place a worker'], Todo).
+
+% LAST TIME: Just did the above, now make workers visible and make them draggable.
 
 % % % % %
 % Config
@@ -212,10 +228,7 @@ droppable(Actor, DraggableId, DropZone, vote, [DraggableId, commit]) :-
   DropZone = [player, Actor, vote].
 
 can_peek(Player, CardId) :-
-  card(vote, _, _, [player, Player | _], CardId).
-
-can_peek(Player, CardId) :-
-  card(role, _, _, [player, Player, assigned_role], CardId).
+  card(objective, _, _, [player, Player | _], CardId).
 
 % % % % % % % % %
 % Player Actions
@@ -232,7 +245,7 @@ action_label(next_phase, 'Proceed to Voting Phase') :- phase([round, _, nominate
 available_action(Actor, end_turn, []) :-
   false.
 
-act(end_turn, _, []) :-
+act(_, end_turn, []) :-
   phase([round, N, nominate]),
   set_phase([round, N, vote]).
 
