@@ -1,0 +1,383 @@
+import {
+  CARD_LANDSCAPE_HEIGHT,
+  CARD_LANDSCAPE_WIDTH,
+  CARD_PORTRAIT_HEIGHT,
+  CARD_PORTRAIT_WIDTH,
+  CHIP_SIZE,
+  HAND_SIZE,
+  TABLE_HEIGHT,
+  TABLE_OBJECT_INSET,
+  TABLE_PIECE_INSET,
+  TABLE_WIDTH
+} from '../constants.js'
+import { cardDropRule, CARD_DRAG_TYPE, CARD_DROP_ACTION, ZONE } from '../zones.js'
+import { cloneGameState, createInitialGameState, players, shuffle } from './setup.js'
+
+export const COMMAND = Object.freeze({
+  RESET: 'game.reset',
+  SWITCH_PLAYER: 'player.switch',
+  DRAW: 'deck.draw',
+  SHUFFLE_DRAW: 'deck.shuffle',
+  OBJECT_MOVE: 'object.move',
+  OBJECT_LOCK: 'object.lock',
+  CHIP_CREATE: 'chip.create',
+  CHIP_MOVE: 'chip.move',
+  CHIP_LOCK: 'chip.lock',
+  CHIP_RETURN: 'chip.return',
+  CARD_HAND_TO_DISCARD: 'card.handToDiscard',
+  CARD_DISCARD_TO_HAND: 'card.discardToHand',
+  CARD_DISCARD_TO_TABLE: 'card.discardToTable',
+  CARD_TABLE_TO_HAND: 'card.tableToHand',
+  CARD_TABLE_TO_DISCARD: 'card.tableToDiscard',
+  CARD_TABLE_MOVE: 'card.tableMove',
+  CARD_FLIP: 'card.flip',
+  CARD_ROTATE: 'card.rotate',
+  CARD_LOCK: 'card.lock'
+})
+
+export function applyCommand(state, command, { random = Math.random } = {}) {
+  if (!command?.type) return reject('Unknown command.')
+
+  const result = applyCommandMutation(state, command, random)
+  if (result.ok && result.message && command.type !== COMMAND.RESET) addLog(state, result.message)
+  return result
+}
+
+function applyCommandMutation(state, command, random) {
+  switch (command.type) {
+    case COMMAND.RESET:
+      replaceState(state, createInitialGameState({ random }))
+      state.log = ['Prototype reset.']
+      return accept('Prototype reset.')
+
+    case COMMAND.SWITCH_PLAYER:
+      return switchPlayer(state, command.payload)
+
+    case COMMAND.DRAW:
+      return drawToHand(state, command.payload?.count || 1, random)
+
+    case COMMAND.SHUFFLE_DRAW:
+      state.drawPile = shuffle(state.drawPile, random)
+      return accept('Draw deck shuffled.')
+
+    case COMMAND.OBJECT_MOVE:
+      return moveObject(state, command.payload)
+
+    case COMMAND.OBJECT_LOCK:
+      return toggleObjectLock(state, command.payload)
+
+    case COMMAND.CHIP_CREATE:
+      return createChip(state, command.payload)
+
+    case COMMAND.CHIP_MOVE:
+      return moveChip(state, command.payload)
+
+    case COMMAND.CHIP_LOCK:
+      return toggleChipLock(state, command.payload)
+
+    case COMMAND.CHIP_RETURN:
+      return returnChip(state, command.payload)
+
+    case COMMAND.CARD_HAND_TO_DISCARD:
+      return handCardToDiscard(state, command.payload)
+
+    case COMMAND.CARD_DISCARD_TO_HAND:
+      return discardCardToHand(state, command.payload)
+
+    case COMMAND.CARD_DISCARD_TO_TABLE:
+      return discardCardToTable(state, command.payload)
+
+    case COMMAND.CARD_TABLE_TO_HAND:
+      return tableCardToHand(state, command.payload)
+
+    case COMMAND.CARD_TABLE_TO_DISCARD:
+      return tableCardToDiscard(state, command.payload)
+
+    case COMMAND.CARD_TABLE_MOVE:
+      return moveTableCard(state, command.payload)
+
+    case COMMAND.CARD_FLIP:
+      return updateTableCard(state, command.payload?.pieceId, piece => {
+        piece.faceUp = !piece.faceUp
+        return `${piece.card.code} flipped ${piece.faceUp ? 'face-up' : 'face-down'}.`
+      })
+
+    case COMMAND.CARD_ROTATE:
+      return updateTableCard(state, command.payload?.pieceId, piece => {
+        piece.orientation = piece.orientation === 'landscape' ? 'portrait' : 'landscape'
+        return `${piece.card.code} rotated ${piece.orientation}.`
+      })
+
+    case COMMAND.CARD_LOCK:
+      return updateTableCard(state, command.payload?.pieceId, piece => {
+        piece.locked = !piece.locked
+        return `${piece.card.code} ${piece.locked ? 'locked' : 'unlocked'}.`
+      })
+
+    default:
+      return reject(`Unsupported command: ${command.type}`)
+  }
+}
+
+export function createCommand(type, payload = {}) {
+  return { type, payload }
+}
+
+export function applySnapshot(target, snapshot) {
+  replaceState(target, cloneGameState(snapshot))
+}
+
+function switchPlayer(state, payload = {}) {
+  const player = players.find(item => item.id === payload.playerId)
+  state.activePlayerId = payload.playerId || state.activePlayerId
+  return accept(`${player?.name || payload.playerName || 'Player'} is active.`)
+}
+
+function drawToHand(state, count, random) {
+  let drawn = 0
+
+  for (let i = 0; i < count; i++) {
+    if (state.hand.length >= HAND_SIZE) {
+      return drawn
+        ? accept(`Drew ${drawn} card${drawn === 1 ? '' : 's'}.`)
+        : reject('Hand is full.')
+    }
+
+    if (!state.drawPile.length) recycleDiscard(state, random)
+    if (!state.drawPile.length) {
+      return drawn
+        ? accept(`Drew ${drawn} card${drawn === 1 ? '' : 's'}.`)
+        : reject('Draw deck is empty.')
+    }
+
+    const card = state.drawPile.pop()
+    if (card) {
+      state.hand.push(card)
+      drawn++
+    }
+  }
+
+  return accept(`Drew ${drawn} card${drawn === 1 ? '' : 's'}.`)
+}
+
+function recycleDiscard(state, random) {
+  if (!state.discardPile.length) return
+  state.drawPile = shuffle(state.discardPile, random)
+  state.discardPile = []
+  addLog(state, 'Discard was shuffled back into the draw deck.')
+}
+
+function moveObject(state, payload = {}) {
+  const object = objectById(state, payload.objectId)
+  if (!object) return reject('Object not found.')
+  if (object.locked) return reject(`${object.title} is locked.`)
+
+  object.x = clamp(payload.x, TABLE_OBJECT_INSET, TABLE_WIDTH - TABLE_OBJECT_INSET)
+  object.y = clamp(payload.y, TABLE_OBJECT_INSET, TABLE_HEIGHT - TABLE_OBJECT_INSET)
+  return accept(`${object.title} moved.`)
+}
+
+function toggleObjectLock(state, payload = {}) {
+  const object = objectById(state, payload.objectId)
+  if (!object) return reject('Object not found.')
+
+  object.locked = !object.locked
+  return accept(`${object.title} ${object.locked ? 'locked' : 'unlocked'}.`)
+}
+
+function createChip(state, payload = {}) {
+  if (!payload.playerId) return reject('Chip player is required.')
+  if (state.chips.some(chip => chip.id === payload.chipId)) return reject('Chip already exists.')
+
+  const position = clampPiecePosition(payload.x, payload.y, CHIP_SIZE, CHIP_SIZE)
+  state.chips.push({
+    id: payload.chipId,
+    playerId: payload.playerId,
+    x: position.x,
+    y: position.y,
+    locked: false
+  })
+  return accept(`${payload.playerName || 'Player'} chip created.`)
+}
+
+function moveChip(state, payload = {}) {
+  const chip = chipById(state, payload.chipId)
+  if (!chip) return reject('Chip not found.')
+  if (chip.locked) return reject('Chip is locked.')
+
+  const position = clampPiecePosition(payload.x, payload.y, payload.width || CHIP_SIZE, payload.height || CHIP_SIZE)
+  chip.x = position.x
+  chip.y = position.y
+  return accept('Chip placed.')
+}
+
+function toggleChipLock(state, payload = {}) {
+  const chip = chipById(state, payload.chipId)
+  if (!chip) return reject('Chip not found.')
+
+  chip.locked = !chip.locked
+  return accept(`Chip ${chip.locked ? 'locked' : 'unlocked'}.`)
+}
+
+function returnChip(state, payload = {}) {
+  const chip = chipById(state, payload.chipId)
+  if (!chip) return reject('Chip not found.')
+
+  state.chips = state.chips.filter(item => item.id !== chip.id)
+  return accept('Chip returned to supply.')
+}
+
+function handCardToDiscard(state, payload = {}) {
+  const rule = cardDropRule(payload.zoneId || ZONE.DISCARD, CARD_DRAG_TYPE.HAND)
+  if (rule?.action !== CARD_DROP_ACTION.MOVE_TO_DISCARD) return reject('Discard does not accept that card.')
+
+  const card = state.hand.find(item => item.id === payload.cardId)
+  if (!card) return reject('Card not found in hand.')
+
+  state.hand = state.hand.filter(item => item.id !== card.id)
+  state.discardPile.push({ ...card, faceUp: rule.cardFaceUpOnDrop ?? true })
+  return accept(`${card.code} moved to discard.`)
+}
+
+function discardCardToHand(state, payload = {}) {
+  const rule = cardDropRule(payload.zoneId || ZONE.HAND, CARD_DRAG_TYPE.DISCARD)
+  if (rule?.action !== CARD_DROP_ACTION.MOVE_TO_HAND) return reject('Hand does not accept that card.')
+
+  const card = topDiscardCard(state)
+  if (!card || card.id !== payload.cardId) return reject('Only the top discard card can be moved.')
+  if (state.hand.length >= HAND_SIZE) return reject('Hand is full.')
+
+  state.discardPile.pop()
+  state.hand.push(card)
+  return accept(`${card.code} moved from discard to hand.`)
+}
+
+function discardCardToTable(state, payload = {}) {
+  const rule = cardDropRule(payload.zoneId || ZONE.TABLE, CARD_DRAG_TYPE.DISCARD)
+  if (rule?.action !== CARD_DROP_ACTION.PLACE_ON_TABLE) return reject('Table does not accept that card.')
+
+  const card = topDiscardCard(state)
+  if (!card || card.id !== payload.cardId) return reject('Only the top discard card can be moved.')
+  if (!payload.pieceId) return reject('Table card id is required.')
+  if (state.tableCards.some(piece => piece.id === payload.pieceId)) return reject('Table card already exists.')
+
+  state.discardPile.pop()
+  state.tableCards.push(makeTableCardPiece(card, payload))
+  return accept(`${card.code} moved from discard to table.`)
+}
+
+function tableCardToHand(state, payload = {}) {
+  const rule = cardDropRule(payload.zoneId || ZONE.HAND, CARD_DRAG_TYPE.TABLE)
+  if (rule?.action !== CARD_DROP_ACTION.MOVE_TO_HAND) return reject('Hand does not accept that card.')
+
+  const piece = tableCardById(state, payload.pieceId)
+  if (!piece) return reject('Table card not found.')
+  if (piece.locked) return reject('Card is locked.')
+  if (state.hand.length >= HAND_SIZE) return reject('Hand is full.')
+
+  state.tableCards = state.tableCards.filter(item => item.id !== piece.id)
+  state.hand.push(piece.card)
+  return accept(`${piece.card.code} moved from table to hand.`)
+}
+
+function tableCardToDiscard(state, payload = {}) {
+  const rule = cardDropRule(payload.zoneId || ZONE.DISCARD, CARD_DRAG_TYPE.TABLE)
+  if (rule?.action !== CARD_DROP_ACTION.MOVE_TO_DISCARD) return reject('Discard does not accept that card.')
+
+  const piece = tableCardById(state, payload.pieceId)
+  if (!piece) return reject('Table card not found.')
+  if (piece.locked) return reject('Card is locked.')
+
+  state.tableCards = state.tableCards.filter(item => item.id !== piece.id)
+  state.discardPile.push({ ...piece.card, faceUp: rule.cardFaceUpOnDrop ?? true })
+  return accept(`${piece.card.code} moved from table to discard.`)
+}
+
+function moveTableCard(state, payload = {}) {
+  const piece = tableCardById(state, payload.pieceId)
+  if (!piece) return reject('Table card not found.')
+  if (piece.locked) return reject('Card is locked.')
+
+  const size = cardPieceSize(piece)
+  const position = clampPiecePosition(payload.x, payload.y, payload.width || size.width, payload.height || size.height)
+  piece.x = position.x
+  piece.y = position.y
+  return accept(`${piece.card.code} moved.`)
+}
+
+function updateTableCard(state, pieceId, update) {
+  const piece = tableCardById(state, pieceId)
+  if (!piece) return reject('Table card not found.')
+
+  return accept(update(piece))
+}
+
+function makeTableCardPiece(card, payload) {
+  const orientation = payload.orientation || 'portrait'
+  const size = cardPieceSize({ orientation })
+  const position = clampPiecePosition(payload.x, payload.y, payload.width || size.width, payload.height || size.height)
+
+  return {
+    id: payload.pieceId,
+    card,
+    x: position.x,
+    y: position.y,
+    rotation: payload.rotation || 0,
+    orientation,
+    faceUp: payload.faceUp ?? true,
+    owner: payload.owner || null,
+    source: payload.source || 'discard-tray',
+    type: payload.cardType || 'standard-card',
+    locked: false
+  }
+}
+
+function cardPieceSize(piece) {
+  return piece.orientation === 'landscape'
+    ? { width: CARD_LANDSCAPE_WIDTH, height: CARD_LANDSCAPE_HEIGHT }
+    : { width: CARD_PORTRAIT_WIDTH, height: CARD_PORTRAIT_HEIGHT }
+}
+
+function objectById(state, id) {
+  return state.objects.find(object => object.id === id)
+}
+
+function chipById(state, id) {
+  return state.chips.find(chip => chip.id === id)
+}
+
+function tableCardById(state, id) {
+  return state.tableCards.find(piece => piece.id === id)
+}
+
+function topDiscardCard(state) {
+  return state.discardPile[state.discardPile.length - 1]
+}
+
+function addLog(state, message) {
+  state.log = [message, ...state.log].slice(0, 5)
+}
+
+function accept(message) {
+  return { ok: true, message }
+}
+
+function reject(message) {
+  return { ok: false, message }
+}
+
+function replaceState(target, source) {
+  for (const key of Object.keys(target)) delete target[key]
+  Object.assign(target, source)
+}
+
+function clampPiecePosition(x, y, width, height) {
+  return {
+    x: clamp(x, TABLE_PIECE_INSET, TABLE_WIDTH - width - TABLE_PIECE_INSET),
+    y: clamp(y, TABLE_PIECE_INSET, TABLE_HEIGHT - height - TABLE_PIECE_INSET)
+  }
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(Number(value) || 0, min), max)
+}

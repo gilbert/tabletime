@@ -205,6 +205,42 @@ export const TableSurface = s`div
   box-shadow inset 0 0 0 18px rgba(15, 52, 38, .72), inset 0 0 120px rgba(0,0,0,.35)
 `
 
+export const PresenceCursor = s`div
+  position absolute
+  z-index 70
+  display grid
+  grid-template-columns 0 auto
+  align-items start
+  pointer-events none
+  transform translate(2px, 2px)
+  transition left 70ms linear, top 70ms linear
+  will-change left, top
+
+  &::before {
+    content ''
+    width 0
+    height 0
+    border-left 9px solid var(--presence-color)
+    border-top 7px solid transparent
+    border-bottom 7px solid transparent
+    filter drop-shadow(0 2px 4px rgba(0,0,0,.35))
+    transform rotate(38deg)
+  }
+
+  span {
+    margin-left 10px
+    margin-top 9px
+    padding 3px 6px
+    border-radius 6px
+    background var(--presence-color)
+    color white
+    font-size 11px
+    font-weight 800
+    box-shadow 0 5px 14px rgba(0,0,0,.28)
+    white-space nowrap
+  }
+`
+
 export const TableObjectShell = s`section
   position absolute
   z-index 2

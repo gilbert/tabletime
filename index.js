@@ -51,6 +51,7 @@ import {
   PanelSection,
   PanelTitle,
   Pill,
+  PresenceCursor,
   SecondaryButton,
   SidePanel,
   StackCount,
@@ -70,148 +71,29 @@ import {
   Workspace,
   installGlobalStyles
 } from './components.js'
+import { applyCommand, applySnapshot, COMMAND, createCommand } from './game/commands.js'
+import { createInitialGameState, players, sequenceSpaces, suits } from './game/setup.js'
+import { createMultiplayerClient } from './network.js'
 import { CARD_DRAG_TYPE, CARD_DROP_ACTION, ZONE, cardDropRule, zoneAcceptsCardDrop } from './zones.js'
 
 installGlobalStyles()
 
-const players = [
-  { id: 'red', name: 'Red', color: '#c73538' },
-  { id: 'blue', name: 'Blue', color: '#2267b8' }
-]
-
-const suits = [
-  { id: 'S', name: 'Spades', color: '#1f2937' },
-  { id: 'H', name: 'Hearts', color: '#c73538' },
-  { id: 'D', name: 'Diamonds', color: '#c73538' },
-  { id: 'C', name: 'Clubs', color: '#1f2937' }
-]
-
-const ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
-const cornerIndexes = new Set([0, BOARD_SIZE - 1, BOARD_SIZE * (BOARD_SIZE - 1), BOARD_SIZE * BOARD_SIZE - 1])
-
-let nextId = 1
 let dragState = null
 let dragGhost = null
 let drawAnimationActive = false
 let pointerListenersAttached = false
+let networkAttached = false
 let redrawQueued = false
+let multiplayer = null
+let networkStatus = 'offline'
+let roomId = 'sequence'
+let localClientId = 'local'
+let localEntityCounter = 1
+let lastPresenceSent = 0
+let lastPointer = null
+const remotePresence = new Map()
 
-const state = {
-  activePlayerId: players[0].id,
-  selectedHandCardId: null,
-  selectedTableCardId: null,
-  selectedDiscardCardId: null,
-  selectedChipId: null,
-  drawPile: shuffle(makeDeck(2)),
-  discardPile: [],
-  hand: [],
-  chips: [],
-  tableCards: [],
-  objects: [
-    {
-      id: 'sequence-board',
-      type: 'board',
-      title: 'Sequence Board',
-      x: 410,
-      y: 150,
-      locked: true
-    },
-    {
-      id: 'draw-deck',
-      type: 'deck',
-      title: 'Draw Deck',
-      x: 118,
-      y: 220,
-      locked: false
-    },
-    {
-      id: 'discard-tray',
-      type: 'discard',
-      title: 'Discard',
-      x: 1275,
-      y: 235,
-      locked: false
-    },
-    {
-      id: 'chip-supply',
-      type: 'supply',
-      title: 'Chip Supply',
-      x: 125,
-      y: 560,
-      locked: false
-    }
-  ],
-  log: ['Prototype loaded with a Sequence reference setup.']
-}
-
-const sequenceSpaces = buildSequenceSpaces()
-drawToHand(HAND_SIZE, false)
-
-function makeDeck(copies = 1) {
-  const cards = []
-
-  for (let copy = 0; copy < copies; copy++) {
-    for (const suit of suits) {
-      for (const rank of ranks) {
-        cards.push(makeCard(rank, suit.id, copy))
-      }
-    }
-  }
-
-  return cards
-}
-
-function makeCard(rank, suit, copy = 0) {
-  return {
-    id: `card-${nextId++}`,
-    code: `${rank}${suit}`,
-    rank,
-    suit,
-    copy
-  }
-}
-
-function buildSequenceSpaces() {
-  const nonJacks = []
-
-  for (let copy = 0; copy < 2; copy++) {
-    for (const suit of suits) {
-      for (const rank of ranks) {
-        if (rank !== 'J') nonJacks.push({ rank, suit: suit.id, code: `${rank}${suit.id}`, copy })
-      }
-    }
-  }
-
-  let cardIndex = 0
-
-  return Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, index) => {
-    const row = Math.floor(index / BOARD_SIZE)
-    const col = index % BOARD_SIZE
-
-    if (cornerIndexes.has(index)) {
-      return { id: `space-${row}-${col}`, row, col, free: true, code: 'FREE' }
-    }
-
-    return {
-      id: `space-${row}-${col}`,
-      row,
-      col,
-      free: false,
-      ...nonJacks[cardIndex++]
-    }
-  })
-}
-
-function shuffle(cards) {
-  const next = cards.slice()
-
-  for (let i = next.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[next[i], next[j]] = [next[j], next[i]]
-  }
-
-  return next
-}
+const state = createInitialGameState()
 
 function activePlayer() {
   return players.find(player => player.id === state.activePlayerId) || players[0]
@@ -249,16 +131,6 @@ function playerById(id) {
   return players.find(player => player.id === id) || players[0]
 }
 
-function drawToHand(count = 1, shouldLog = true) {
-  for (let i = 0; i < count; i++) {
-    if (!state.drawPile.length) recycleDiscard()
-    const card = state.drawPile.pop()
-    if (card) state.hand.push(card)
-  }
-
-  if (shouldLog) addLog(`Drew ${count} card${count === 1 ? '' : 's'}.`)
-}
-
 function drawOne() {
   if (drawAnimationActive) return
 
@@ -267,35 +139,26 @@ function drawOne() {
     return
   }
 
-  if (!state.drawPile.length) recycleDiscard()
-  if (!state.drawPile.length) {
+  if (!state.drawPile.length && !state.discardPile.length) {
     addLog('Draw deck is empty.')
     return
   }
 
   if (s.is.server) {
-    drawToHand(1)
+    submitCommand(createCommand(COMMAND.DRAW, { count: 1 }))
     return
   }
 
   drawAnimationActive = true
   animateDrawToHand().finally(() => {
     drawAnimationActive = false
-    drawToHand(1)
+    submitCommand(createCommand(COMMAND.DRAW, { count: 1 }))
     scheduleRedraw()
   })
 }
 
-function recycleDiscard() {
-  if (!state.discardPile.length) return
-  state.drawPile = shuffle(state.discardPile)
-  state.discardPile = []
-  addLog('Discard was shuffled back into the draw deck.')
-}
-
 function shuffleDrawPile() {
-  state.drawPile = shuffle(state.drawPile)
-  addLog('Draw deck shuffled.')
+  submitCommand(createCommand(COMMAND.SHUFFLE_DRAW))
 }
 
 function selectHandCard(cardId) {
@@ -306,8 +169,7 @@ function selectHandCard(cardId) {
 }
 
 function switchPlayer(playerId) {
-  state.activePlayerId = playerId
-  addLog(`${activePlayer().name} is active.`)
+  submitCommand(createCommand(COMMAND.SWITCH_PLAYER, { playerId }))
 }
 
 function selectTableCard(pieceId) {
@@ -332,22 +194,150 @@ function selectChip(chipId) {
 }
 
 function resetPrototype() {
-  state.activePlayerId = players[0].id
-  state.selectedHandCardId = null
-  state.selectedTableCardId = null
-  state.selectedDiscardCardId = null
-  state.selectedChipId = null
-  state.drawPile = shuffle(makeDeck(2))
-  state.discardPile = []
-  state.hand = []
-  state.chips = []
-  state.tableCards = []
-  state.log = ['Prototype reset.']
-  drawToHand(HAND_SIZE, false)
+  submitCommand(createCommand(COMMAND.RESET))
 }
 
 function addLog(message) {
   state.log = [message, ...state.log].slice(0, 5)
+}
+
+function submitCommand(command) {
+  const result = applyCommand(state, command)
+  if (!result.ok) {
+    addLog(result.message)
+    scheduleRedraw()
+    return result
+  }
+
+  multiplayer?.sendCommand(command)
+  scheduleRedraw()
+  return result
+}
+
+function applyAuthoritativeSnapshot(snapshot) {
+  const selection = {
+    selectedHandCardId: state.selectedHandCardId,
+    selectedTableCardId: state.selectedTableCardId,
+    selectedDiscardCardId: state.selectedDiscardCardId,
+    selectedChipId: state.selectedChipId
+  }
+
+  applySnapshot(state, snapshot)
+  Object.assign(state, selection)
+  pruneMissingSelections()
+  scheduleRedraw()
+}
+
+function pruneMissingSelections() {
+  if (state.selectedHandCardId && !selectedHandCard()) state.selectedHandCardId = null
+  if (state.selectedTableCardId && !selectedTableCard()) state.selectedTableCardId = null
+  if (state.selectedDiscardCardId && !selectedDiscardCard()) state.selectedDiscardCardId = null
+  if (state.selectedChipId && !chipById(state.selectedChipId)) state.selectedChipId = null
+}
+
+function attachNetworking() {
+  if (networkAttached || s.is.server) return
+  networkAttached = true
+
+  const params = new URLSearchParams(window.location.search)
+  roomId = params.get('room') || roomId
+  const playerName = params.get('name') || null
+
+  multiplayer = createMultiplayerClient({
+    roomId,
+    playerName,
+    onStatus: status => {
+      networkStatus = status
+      scheduleRedraw()
+    },
+    onWelcome: message => {
+      localClientId = message.clientId
+      addLog(`Connected to room ${message.roomId}.`)
+    },
+    onSnapshot: applyAuthoritativeSnapshot,
+    onPresence: updateRemotePresence,
+    onRejected: message => {
+      if (message.reason) addLog(message.reason)
+      if (message.snapshot) applyAuthoritativeSnapshot(message.snapshot)
+      else scheduleRedraw()
+    }
+  })
+}
+
+function updateRemotePresence(message) {
+  if (message.presence?.status === 'left') {
+    remotePresence.delete(message.clientId)
+  } else {
+    remotePresence.set(message.clientId, {
+      clientId: message.clientId,
+      playerId: message.playerId,
+      playerName: message.playerName,
+      color: message.color,
+      updatedAt: Date.now(),
+      ...message.presence
+    })
+  }
+
+  scheduleRedraw()
+}
+
+function sendPresence(pointer = lastPointer, options = {}) {
+  if (!multiplayer?.connected) return
+  if (pointer) lastPointer = pointer
+
+  const now = performance.now()
+  if (!options.force && now - lastPresenceSent < 45) return
+  lastPresenceSent = now
+
+  multiplayer.sendPresence({
+    pointer: pointer || lastPointer,
+    selection: currentSelection(),
+    drag: dragPresence()
+  })
+}
+
+function currentSelection() {
+  if (state.selectedTableCardId) return { kind: 'table-card', id: state.selectedTableCardId }
+  if (state.selectedHandCardId) return { kind: 'hand-card', id: state.selectedHandCardId }
+  if (state.selectedDiscardCardId) return { kind: 'discard-card', id: state.selectedDiscardCardId }
+  if (state.selectedChipId) return { kind: 'chip', id: state.selectedChipId }
+  return null
+}
+
+function dragPresence() {
+  if (!dragState) return null
+  if (dragState.returning) return null
+
+  const base = {
+    offsetX: dragState.offsetX,
+    offsetY: dragState.offsetY,
+    width: dragState.width,
+    height: dragState.height
+  }
+
+  if (dragState.type === 'chip') {
+    const chip = chipById(dragState.chipId)
+    return { ...base, kind: 'chip', id: dragState.chipId, x: chip?.x, y: chip?.y }
+  }
+
+  if (dragState.type === CARD_DRAG_TYPE.TABLE) {
+    const piece = tableCardById(dragState.pieceId)
+    return { ...base, kind: 'table-card', id: dragState.pieceId, x: piece?.x, y: piece?.y }
+  }
+
+  if (dragState.type === CARD_DRAG_TYPE.HAND) return { kind: 'hand-card', id: dragState.cardId }
+  if (dragState.type === CARD_DRAG_TYPE.DISCARD) return { kind: 'discard-card', id: dragState.cardId }
+
+  if (dragState.type === 'object') {
+    const object = objectById(dragState.objectId)
+    return { ...base, kind: 'object', id: dragState.objectId, x: object?.x, y: object?.y }
+  }
+
+  return null
+}
+
+function localId(prefix) {
+  return `${prefix}-${localClientId}-${localEntityCounter++}`
 }
 
 function scheduleRedraw() {
@@ -364,10 +354,20 @@ function attachPointerListeners() {
   if (pointerListenersAttached) return
 
   pointerListenersAttached = true
+  attachNetworking()
 
   window.addEventListener('pointermove', event => {
-    if (!dragState) return
-    if (dragState.returning) return
+    const pointer = tablePointFromEvent(event)
+
+    if (!dragState) {
+      sendPresence(pointer)
+      return
+    }
+
+    if (dragState.returning) {
+      sendPresence(pointer)
+      return
+    }
 
     const surface = document.querySelector('[data-table-surface="true"]')
     if (!surface) return
@@ -419,6 +419,7 @@ function attachPointerListeners() {
     }
 
     scheduleRedraw()
+    sendPresence(pointer)
   })
 
   window.addEventListener('pointerup', event => {
@@ -426,7 +427,14 @@ function attachPointerListeners() {
     const currentDrag = dragState
 
     if (currentDrag.type === 'object') {
-      if (currentDrag.moved) addLog(`${objectById(currentDrag.objectId)?.title || 'Object'} moved.`)
+      const object = objectById(currentDrag.objectId)
+      if (currentDrag.moved && object) {
+        submitCommand(createCommand(COMMAND.OBJECT_MOVE, {
+          objectId: object.id,
+          x: object.x,
+          y: object.y
+        }))
+      }
     }
 
     if (currentDrag.type === 'chip') {
@@ -482,6 +490,7 @@ function startObjectDrag(event, object) {
     width: rect.width,
     height: rect.height
   }
+  sendPresence(tablePointFromEvent(event), { force: true })
 }
 
 function startChipDrag(event, chip) {
@@ -508,6 +517,7 @@ function startChipDrag(event, chip) {
     width: rect.width,
     height: rect.height
   }
+  sendPresence(tablePointFromEvent(event), { force: true })
 }
 
 function createChipFromSupply(event, playerId) {
@@ -518,13 +528,20 @@ function createChipFromSupply(event, playerId) {
   if (!point) return
 
   const chip = {
-    id: `chip-${nextId++}`,
+    id: localId('chip'),
     playerId,
     x: clamp(point.x - CHIP_SIZE / 2, TABLE_PIECE_INSET, TABLE_WIDTH - CHIP_SIZE - TABLE_PIECE_INSET),
     y: clamp(point.y - CHIP_SIZE / 2, TABLE_PIECE_INSET, TABLE_HEIGHT - CHIP_SIZE - TABLE_PIECE_INSET)
   }
 
-  state.chips.push(chip)
+  submitCommand(createCommand(COMMAND.CHIP_CREATE, {
+    chipId: chip.id,
+    playerId: chip.playerId,
+    playerName: playerById(chip.playerId).name,
+    x: chip.x,
+    y: chip.y
+  }))
+  selectChip(chip.id)
   dragState = {
     type: 'chip',
     chipId: chip.id,
@@ -539,6 +556,7 @@ function createChipFromSupply(event, playerId) {
     height: CHIP_SIZE
   }
 
+  sendPresence(point, { force: true })
   scheduleRedraw()
 }
 
@@ -564,6 +582,7 @@ function startHandCardDrag(event, card) {
     originRect
   }
   createDragGhost(event.currentTarget, dragState)
+  sendPresence(tablePointFromEvent(event), { force: true })
 }
 
 function startDiscardCardDrag(event, card) {
@@ -588,6 +607,7 @@ function startDiscardCardDrag(event, card) {
     originRect
   }
   createDragGhost(event.currentTarget, dragState)
+  sendPresence(tablePointFromEvent(event), { force: true })
 }
 
 function startTableCardDrag(event, piece) {
@@ -614,6 +634,7 @@ function startTableCardDrag(event, piece) {
     width: rect.width,
     height: rect.height
   }
+  sendPresence(tablePointFromEvent(event), { force: true })
 }
 
 function finishHandCardDrop(event, drag) {
@@ -624,12 +645,17 @@ function finishHandCardDrop(event, drag) {
   const rule = cardDropRule(zoneId, drag.type)
 
   if (rule?.action === CARD_DROP_ACTION.MOVE_TO_DISCARD) {
-    state.hand = state.hand.filter(item => item.id !== card.id)
-    state.discardPile.push({ ...card, faceUp: rule.cardFaceUpOnDrop ?? true })
+    const result = submitCommand(createCommand(COMMAND.CARD_HAND_TO_DISCARD, {
+      cardId: card.id,
+      zoneId
+    }))
+    if (!result.ok) {
+      returnDragGhostToOrigin(drag)
+      return
+    }
     state.selectedHandCardId = null
     state.selectedDiscardCardId = card.id
     removeDragGhost()
-    addLog(`${card.code} moved to discard.`)
     return
   }
 
@@ -645,18 +671,18 @@ function finishDiscardCardDrop(event, drag) {
   const rule = cardDropRule(zoneId, drag.type)
 
   if (rule?.action === CARD_DROP_ACTION.MOVE_TO_HAND) {
-    if (state.hand.length >= HAND_SIZE) {
-      addLog('Hand is full.')
+    const result = submitCommand(createCommand(COMMAND.CARD_DISCARD_TO_HAND, {
+      cardId: card.id,
+      zoneId
+    }))
+    if (!result.ok) {
       returnDragGhostToOrigin(drag)
       return
     }
 
-    state.discardPile.pop()
-    state.hand.push(card)
     state.selectedDiscardCardId = null
     state.selectedHandCardId = card.id
     removeDragGhost()
-    addLog(`${card.code} moved from discard to hand.`)
     return
   }
 
@@ -664,22 +690,24 @@ function finishDiscardCardDrop(event, drag) {
     const point = tablePointFromEvent(event)
     if (!point) return
 
-    state.discardPile.pop()
-    state.tableCards.push({
-      id: `piece-${nextId++}`,
-      card,
-      ...clampPiecePosition(point.x - drag.offsetX, point.y - drag.offsetY, drag.width, drag.height),
-      rotation: 0,
-      orientation: 'portrait',
-      faceUp: true,
-      owner: null,
-      source: 'discard-tray',
-      type: 'standard-card',
-      locked: false
-    })
+    const pieceId = localId('piece')
+    const position = clampPiecePosition(point.x - drag.offsetX, point.y - drag.offsetY, drag.width, drag.height)
+    const result = submitCommand(createCommand(COMMAND.CARD_DISCARD_TO_TABLE, {
+      cardId: card.id,
+      pieceId,
+      zoneId,
+      x: position.x,
+      y: position.y,
+      width: drag.width,
+      height: drag.height,
+      source: 'discard-tray'
+    }))
+    if (!result.ok) {
+      returnDragGhostToOrigin(drag)
+      return
+    }
     state.selectedDiscardCardId = null
-    state.selectedTableCardId = state.tableCards[state.tableCards.length - 1].id
-    addLog(`${card.code} moved from discard to table.`)
+    state.selectedTableCardId = pieceId
     return
   }
 
@@ -701,7 +729,13 @@ function finishChipDrop(event, drag) {
   const clamped = clampPiecePosition(raw.x, raw.y, drag.width, drag.height)
   chip.x = clamped.x
   chip.y = clamped.y
-  addLog(`${playerById(chip.playerId).name} chip placed.`)
+  submitCommand(createCommand(COMMAND.CHIP_MOVE, {
+    chipId: chip.id,
+    x: clamped.x,
+    y: clamped.y,
+    width: drag.width,
+    height: drag.height
+  }))
 
   if (positionWasClamped(raw, clamped)) {
     animateDraggedPieceToTablePosition(drag, clamped)
@@ -717,28 +751,34 @@ function finishTableCardDrop(event, drag) {
   const rule = cardDropRule(zoneId, drag.type)
 
   if (rule?.action === CARD_DROP_ACTION.MOVE_TO_HAND) {
-    if (state.hand.length >= HAND_SIZE) {
-      addLog('Hand is full.')
-      returnDragGhostToOrigin(drag)
+    const result = submitCommand(createCommand(COMMAND.CARD_TABLE_TO_HAND, {
+      pieceId: piece.id,
+      zoneId
+    }))
+    if (!result.ok) {
+      finishDrag()
       return
     }
 
-    state.tableCards = state.tableCards.filter(item => item.id !== piece.id)
-    state.hand.push(piece.card)
     state.selectedTableCardId = null
     state.selectedHandCardId = piece.card.id
     removeDragGhost()
-    addLog(`${piece.card.code} moved from table to hand.`)
     return
   }
 
   if (rule?.action === CARD_DROP_ACTION.MOVE_TO_DISCARD) {
-    state.tableCards = state.tableCards.filter(item => item.id !== piece.id)
-    state.discardPile.push({ ...piece.card, faceUp: rule.cardFaceUpOnDrop ?? true })
+    const result = submitCommand(createCommand(COMMAND.CARD_TABLE_TO_DISCARD, {
+      pieceId: piece.id,
+      zoneId
+    }))
+    if (!result.ok) {
+      finishDrag()
+      return
+    }
+
     state.selectedTableCardId = null
     state.selectedDiscardCardId = piece.card.id
     removeDragGhost()
-    addLog(`${piece.card.code} moved from table to discard.`)
     return
   }
 
@@ -752,7 +792,13 @@ function finishTableCardDrop(event, drag) {
   const clamped = clampPiecePosition(raw.x, raw.y, drag.width, drag.height)
   piece.x = clamped.x
   piece.y = clamped.y
-  addLog(`${piece.card.code} moved.`)
+  submitCommand(createCommand(COMMAND.CARD_TABLE_MOVE, {
+    pieceId: piece.id,
+    x: clamped.x,
+    y: clamped.y,
+    width: drag.width,
+    height: drag.height
+  }))
 
   if (positionWasClamped(raw, clamped)) {
     animateDraggedPieceToTablePosition(drag, clamped)
@@ -838,6 +884,7 @@ function returnDragGhostToOrigin(drag) {
 
 function animateDraggedPieceToTablePosition(drag, position) {
   drag.returning = true
+  sendPresence(lastPointer, { force: true })
   const target = tableViewportRect(position.x, position.y, drag.width, drag.height)
   drag.snapLeft = target.left
   drag.snapTop = target.top
@@ -857,6 +904,7 @@ function removeDragGhost() {
 function finishDrag() {
   removeDragGhost()
   dragState = null
+  sendPresence(lastPointer, { force: true })
   scheduleRedraw()
 }
 
@@ -957,28 +1005,93 @@ function tableViewportRect(x, y, width, height) {
   }
 }
 
+function remoteDragPosition(kind, id) {
+  const presence = remoteDragPresence(kind, id)
+  if (!presence) return null
+
+  const drag = presence.drag
+  if (isFiniteNumber(drag.x) && isFiniteNumber(drag.y)) {
+    return { x: drag.x, y: drag.y }
+  }
+
+  if (!presence.pointer) return null
+
+  return {
+    x: presence.pointer.x - (drag.offsetX || 0),
+    y: presence.pointer.y - (drag.offsetY || 0)
+  }
+}
+
+function remoteDragPresence(kind, id) {
+  const now = Date.now()
+
+  for (const presence of remotePresence.values()) {
+    const drag = presence.drag
+    if (!drag || !presence.pointer) continue
+    if (drag.kind !== kind || drag.id !== id) continue
+    if (now - presence.updatedAt > 1500) continue
+    return presence
+  }
+
+  return null
+}
+
+function isRemoteDragging(kind, id) {
+  return Boolean(remoteDragPresence(kind, id))
+}
+
+function isFiniteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function objectLeft(object) {
+  const remote = remoteDragPosition('object', object.id)
+  return remote?.x ?? object.x
+}
+
+function objectTop(object) {
+  const remote = remoteDragPosition('object', object.id)
+  return remote?.y ?? object.y
+}
+
 function chipLeft(chip) {
-  if (dragState?.type !== 'chip' || dragState.chipId !== chip.id) return chip.x
-  if (dragState.returning) return dragState.snapLeft
-  return dragState.clientX - dragState.offsetX
+  if (dragState?.type === 'chip' && dragState.chipId === chip.id) {
+    if (dragState.returning) return dragState.snapLeft
+    return dragState.clientX - dragState.offsetX
+  }
+
+  const remote = remoteDragPosition('chip', chip.id)
+  return remote?.x ?? chip.x
 }
 
 function chipTop(chip) {
-  if (dragState?.type !== 'chip' || dragState.chipId !== chip.id) return chip.y
-  if (dragState.returning) return dragState.snapTop
-  return dragState.clientY - dragState.offsetY
+  if (dragState?.type === 'chip' && dragState.chipId === chip.id) {
+    if (dragState.returning) return dragState.snapTop
+    return dragState.clientY - dragState.offsetY
+  }
+
+  const remote = remoteDragPosition('chip', chip.id)
+  return remote?.y ?? chip.y
 }
 
 function tableCardLeft(piece) {
-  if (dragState?.type !== CARD_DRAG_TYPE.TABLE || dragState.pieceId !== piece.id) return piece.x
-  if (dragState.returning) return dragState.snapLeft
-  return dragState.clientX - dragState.offsetX
+  if (dragState?.type === CARD_DRAG_TYPE.TABLE && dragState.pieceId === piece.id) {
+    if (dragState.returning) return dragState.snapLeft
+    return dragState.clientX - dragState.offsetX
+  }
+
+  const remote = remoteDragPosition('table-card', piece.id)
+  return remote?.x ?? piece.x
 }
 
 function tableCardTop(piece) {
-  if (dragState?.type !== CARD_DRAG_TYPE.TABLE || dragState.pieceId !== piece.id) return piece.y
-  if (dragState.returning) return dragState.snapTop
-  return dragState.clientY - dragState.offsetY
+  if (dragState?.type === CARD_DRAG_TYPE.TABLE && dragState.pieceId === piece.id) {
+    if (dragState.returning) return dragState.snapTop
+    return dragState.clientY - dragState.offsetY
+  }
+
+  const remote = remoteDragPosition('table-card', piece.id)
+  return remote?.y ?? piece.y
 }
 
 function clampPiecePosition(x, y, width, height) {
@@ -1011,28 +1124,20 @@ function handleKeyDown(event) {
   const piece = selectedTableCard()
 
   if (key === 'f' && piece) {
-    piece.faceUp = !piece.faceUp
-    addLog(`${piece.card.code} flipped ${piece.faceUp ? 'face-up' : 'face-down'}.`)
-    scheduleRedraw()
+    submitCommand(createCommand(COMMAND.CARD_FLIP, { pieceId: piece.id }))
   }
 
   if (key === 'r' && piece) {
-    piece.orientation = piece.orientation === 'landscape' ? 'portrait' : 'landscape'
-    addLog(`${piece.card.code} rotated ${piece.orientation}.`)
-    scheduleRedraw()
+    submitCommand(createCommand(COMMAND.CARD_ROTATE, { pieceId: piece.id }))
   }
 
   if (key === 'l') {
     if (piece) {
-      piece.locked = !piece.locked
-      addLog(`${piece.card.code} ${piece.locked ? 'locked' : 'unlocked'}.`)
-      scheduleRedraw()
+      submitCommand(createCommand(COMMAND.CARD_LOCK, { pieceId: piece.id }))
     } else if (state.selectedChipId) {
       const chip = chipById(state.selectedChipId)
       if (!chip) return
-      chip.locked = !chip.locked
-      addLog(`${playerById(chip.playerId).name} chip ${chip.locked ? 'locked' : 'unlocked'}.`)
-      scheduleRedraw()
+      submitCommand(createCommand(COMMAND.CHIP_LOCK, { chipId: chip.id }))
     }
   }
 
@@ -1050,24 +1155,20 @@ function handleKeyDown(event) {
     const chip = chipById(state.selectedChipId)
     if (!chip) return
     event.preventDefault()
-    state.chips = state.chips.filter(item => item.id !== chip.id)
+    submitCommand(createCommand(COMMAND.CHIP_RETURN, { chipId: chip.id }))
     state.selectedChipId = null
-    addLog(`${playerById(chip.playerId).name} chip returned to supply.`)
-    scheduleRedraw()
   }
 }
 
 function takeTableCardToHand(piece) {
-  if (state.hand.length >= HAND_SIZE) {
-    addLog('Hand is full.')
-    return
-  }
+  const result = submitCommand(createCommand(COMMAND.CARD_TABLE_TO_HAND, {
+    pieceId: piece.id,
+    zoneId: ZONE.HAND
+  }))
+  if (!result.ok) return
 
-  state.tableCards = state.tableCards.filter(item => item.id !== piece.id)
-  state.hand.push(piece.card)
   state.selectedTableCardId = null
   state.selectedHandCardId = piece.card.id
-  addLog(`${piece.card.code} taken to hand.`)
 }
 
 function takeDiscardCardToHand() {
@@ -1075,16 +1176,14 @@ function takeDiscardCardToHand() {
   const top = state.discardPile[state.discardPile.length - 1]
   if (!card || !top || card.id !== top.id) return
 
-  if (state.hand.length >= HAND_SIZE) {
-    addLog('Hand is full.')
-    return
-  }
+  const result = submitCommand(createCommand(COMMAND.CARD_DISCARD_TO_HAND, {
+    cardId: card.id,
+    zoneId: ZONE.HAND
+  }))
+  if (!result.ok) return
 
-  state.discardPile.pop()
-  state.hand.push(card)
   state.selectedDiscardCardId = null
   state.selectedHandCardId = card.id
-  addLog(`${card.code} taken to hand.`)
 }
 
 function isTypingTarget(target) {
@@ -1125,6 +1224,7 @@ const App = s(({}, [], { doc }) => {
         state.objects.map(object => tableObject({ key: object.id, object })),
         state.tableCards.map(piece => tableCard({ key: piece.id, piece })),
         state.chips.map(chip => tableChip({ key: chip.id, chip })),
+        presenceLayer(),
         sidePanel()
       )
     ),
@@ -1143,6 +1243,7 @@ const topBar = s(() =>
     ),
     StatusStrip(
       Pill('Freeform tabletop'),
+      Pill(`${networkStatus} / ${roomId}`),
       Pill(`${state.drawPile.length} deck`),
       Pill(`${state.chips.length} chips`),
       Pill(`${state.tableCards.length} loose cards`),
@@ -1151,15 +1252,20 @@ const topBar = s(() =>
   )
 )
 
-const tableObject = s(({ object }) =>
-  TableObjectShell`
-    left ${object.x + 'px'}
-    top ${object.y + 'px'}
+const tableObject = s(({ object }) => {
+  const localDragging = dragState?.type === 'object' && dragState.objectId === object.id
+  const remoteDragging = isRemoteDragging('object', object.id)
+
+  return TableObjectShell`
+    left ${objectLeft(object) + 'px'}
+    top ${objectTop(object) + 'px'}
+    z-index ${localDragging ? 60 : remoteDragging ? 55 : 2}
+    transition ${remoteDragging ? 'left 45ms linear, top 45ms linear' : 'none'}
   `({
     'data-table-object': 'true'
   },
     ObjectHeader`
-      cursor ${object.locked ? 'default' : dragState?.type === 'object' && dragState.objectId === object.id ? 'grabbing' : 'grab'}
+      cursor ${object.locked ? 'default' : localDragging ? 'grabbing' : 'grab'}
     `({
       onpointerdown: event => startObjectDrag(event, object)
     },
@@ -1171,7 +1277,7 @@ const tableObject = s(({ object }) =>
     object.type === 'discard' && discardObject(),
     object.type === 'supply' && supplyObject()
   )
-)
+})
 
 const sequenceBoard = s(() =>
   BoardWrap({
@@ -1196,39 +1302,44 @@ const boardSpace = s(({ space }) => {
   )
 })
 
-const tableChip = s(({ chip }) =>
-  TableChip`
-    position ${dragState?.type === 'chip' && dragState.chipId === chip.id ? 'fixed' : 'absolute'}
+const tableChip = s(({ chip }) => {
+  const localDragging = dragState?.type === 'chip' && dragState.chipId === chip.id
+  const remoteDragging = isRemoteDragging('chip', chip.id)
+
+  return TableChip`
+    position ${localDragging ? 'fixed' : 'absolute'}
     left ${chipLeft(chip) + 'px'}
     top ${chipTop(chip) + 'px'}
-    z-index ${dragState?.type === 'chip' && dragState.chipId === chip.id ? 60 : 5}
-    transition ${dragState?.type === 'chip' && dragState.chipId === chip.id && dragState.returning ? SNAP_BACK_TRANSITION : 'none'}
+    z-index ${localDragging ? 60 : remoteDragging ? 55 : 5}
+    transition ${localDragging && dragState.returning ? SNAP_BACK_TRANSITION : remoteDragging ? 'left 45ms linear, top 45ms linear' : 'none'}
     --chip-color ${playerById(chip.playerId).color}
   `({
     'aria-label': `${playerById(chip.playerId).name} chip`,
-    'data-dragging': dragState?.type === 'chip' && dragState.chipId === chip.id ? 'true' : 'false',
+    'data-dragging': localDragging || remoteDragging ? 'true' : 'false',
     'data-selected': state.selectedChipId === chip.id ? 'true' : 'false',
     'data-locked': chip.locked ? 'true' : 'false',
     onpointerdown: event => startChipDrag(event, chip)
   })
-)
+})
 
 const tableCard = s(({ piece }) => {
   const size = cardPieceSize(piece)
+  const localDragging = dragState?.type === CARD_DRAG_TYPE.TABLE && dragState.pieceId === piece.id
+  const remoteDragging = isRemoteDragging('table-card', piece.id)
 
   return TableCardButton`
-    position ${dragState?.type === CARD_DRAG_TYPE.TABLE && dragState.pieceId === piece.id ? 'fixed' : 'absolute'}
+    position ${localDragging ? 'fixed' : 'absolute'}
     left ${tableCardLeft(piece) + 'px'}
     top ${tableCardTop(piece) + 'px'}
-    z-index ${dragState?.type === CARD_DRAG_TYPE.TABLE && dragState.pieceId === piece.id ? 60 : 6}
-    transition ${dragState?.type === CARD_DRAG_TYPE.TABLE && dragState.pieceId === piece.id && dragState.returning ? SNAP_BACK_TRANSITION : 'none'}
+    z-index ${localDragging ? 60 : remoteDragging ? 55 : 6}
+    transition ${localDragging && dragState.returning ? SNAP_BACK_TRANSITION : remoteDragging ? 'left 45ms linear, top 45ms linear' : 'none'}
     --piece-width ${size.width + 'px'}
     --piece-height ${size.height + 'px'}
     --piece-rotate ${(piece.rotation || 0) + 'deg'}
   `({
     'aria-label': `${piece.card.code} table card`,
     'data-piece-id': piece.id,
-    'data-dragging': dragState?.type === CARD_DRAG_TYPE.TABLE && dragState.pieceId === piece.id ? 'true' : 'false',
+    'data-dragging': localDragging || remoteDragging ? 'true' : 'false',
     'data-selected': state.selectedTableCardId === piece.id ? 'true' : 'false',
     'data-locked': piece.locked ? 'true' : 'false',
     onpointerdown: event => startTableCardDrag(event, piece)
@@ -1284,6 +1395,20 @@ const supplyObject = s(() =>
   )
 )
 
+const presenceLayer = s(() =>
+  Array.from(remotePresence.values())
+    .filter(presence => presence.pointer)
+    .map(presence =>
+      PresenceCursor`
+        left ${presence.pointer.x + 'px'}
+        top ${presence.pointer.y + 'px'}
+        --presence-color ${presence.color || playerById(presence.playerId).color}
+      `({ key: presence.clientId },
+        s`span`(presence.playerName || 'Player')
+      )
+    )
+)
+
 const compactCard = s(({ card, selected = false, onpointerdown }) =>
   DeckStack`
     background var(--paper)
@@ -1323,7 +1448,7 @@ const sidePanel = s(() =>
     PanelSection(
       PanelTitle('Model'),
       LogList(
-        ['Tabletop', 'TableObject', 'BoardGrid', 'Deck', 'Hand', 'Presence later'].map(item =>
+        ['Tabletop', 'TableObject', 'BoardGrid', 'Deck', 'Hand', 'Presence'].map(item =>
           LogItem({ key: item }, item)
         )
       )
