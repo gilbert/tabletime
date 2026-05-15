@@ -1,0 +1,15 @@
+{
+  "name": "tabletime",
+  "version": "0.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "build": "cofound build",
+    "generate": "cofound generate",
+    "start": "cofound start",
+    "dev": "cofound dev"
+  },
+  "dependencies": {
+    "cofound": "file:/Users/rabbit-m2/p/cofound/pkg"
+  }
+}
