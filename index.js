@@ -1,10 +1,78 @@
 import s from 'cofound'
+import {
+  BOARD_SIZE,
+  CARD_LANDSCAPE_HEIGHT,
+  CARD_LANDSCAPE_WIDTH,
+  CARD_PORTRAIT_HEIGHT,
+  CARD_PORTRAIT_WIDTH,
+  CHIP_SIZE,
+  HAND_SIZE,
+  SNAP_BACK_DURATION_MS,
+  SNAP_BACK_TRANSITION,
+  TABLE_HEIGHT,
+  TABLE_OBJECT_INSET,
+  TABLE_PIECE_INSET,
+  TABLE_WIDTH
+} from './constants.js'
+import {
+  ActionRail,
+  AppShell,
+  BoardCell,
+  BoardGrid,
+  BoardWrap,
+  BottomText,
+  Brand,
+  CardBack,
+  CardFace,
+  CardRank,
+  CardSuit,
+  CenterRank,
+  CornerText,
+  DeckBody,
+  DeckStack,
+  DiscardBody,
+  FreeCorner,
+  HandBar,
+  HandCardButton,
+  HandCardInner,
+  HandCards,
+  HandStatus,
+  LockBadge,
+  LogItem,
+  LogList,
+  Mark,
+  Metric,
+  MetricGrid,
+  MetricLabel,
+  MetricValue,
+  MiniButton,
+  ObjectActions,
+  ObjectHeader,
+  PanelSection,
+  PanelTitle,
+  Pill,
+  SecondaryButton,
+  SidePanel,
+  StackCount,
+  StatusStrip,
+  Subtitle,
+  SupplyBody,
+  SupplyChip,
+  SupplyRow,
+  TableCardButton,
+  TableChip,
+  TableObjectShell,
+  TableSurface,
+  Title,
+  TitleBlock,
+  ToolbarButton,
+  TopBar,
+  Workspace,
+  installGlobalStyles
+} from './components.js'
+import { CARD_DRAG_TYPE, CARD_DROP_ACTION, ZONE, cardDropRule, zoneAcceptsCardDrop } from './zones.js'
 
-const TABLE_WIDTH = 1740
-const TABLE_HEIGHT = 1120
-const BOARD_SIZE = 10
-const CELL_SIZE = 72
-const HAND_SIZE = 7
+installGlobalStyles()
 
 const players = [
   { id: 'red', name: 'Red', color: '#c73538' },
@@ -78,650 +146,6 @@ const state = {
 
 const sequenceSpaces = buildSequenceSpaces()
 drawToHand(HAND_SIZE, false)
-
-s.css.reset`
-  body {
-    background: #16191d;
-    color: #f5f1e8;
-  }
-
-  button {
-    border: 0;
-  }
-`
-
-s.css`
-  :root {
-    color-scheme: dark;
-    --felt: #1f6d4a;
-    --felt-dark: #145239;
-    --ink: #20242a;
-    --paper: #fbf4df;
-    --muted: #9ba6b2;
-    --line: rgba(255,255,255,.16);
-    --shadow: 0 18px 50px rgba(0,0,0,.32);
-  }
-
-  html,
-  body {
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-  }
-`
-
-const AppShell = s`main
-  display grid
-  grid-template-rows 58px minmax(0, 1fr) 190px
-  width 100vw
-  height 100svh
-  background #16191d
-`
-
-const TopBar = s`header
-  display flex
-  align-items center
-  justify-content space-between
-  gap 18px
-  width 100vw
-  overflow hidden
-  padding 0 18px
-  border-bottom 1px solid rgba(255,255,255,.1)
-  background #20242a
-  box-shadow 0 8px 24px rgba(0,0,0,.22)
-  z-index 10
-`
-
-const Brand = s`div
-  display flex
-  align-items center
-  gap 12px
-  flex 0 0 auto
-`
-
-const Mark = s`div
-  width 30px
-  height 30px
-  border-radius 7px
-  background linear-gradient(135deg, #d9b35f, #a94747 48%, #286caa)
-  box-shadow inset 0 0 0 1px rgba(255,255,255,.24)
-`
-
-const TitleBlock = s`div
-  display grid
-  gap 2px
-`
-
-const Title = s`h1
-  font-size 15px
-  line-height 1
-  font-weight 750
-  letter-spacing 0
-`
-
-const Subtitle = s`p
-  font-size 12px
-  line-height 1.2
-  color var(--muted)
-`
-
-const StatusStrip = s`div
-  display flex
-  align-items center
-  justify-content flex-end
-  gap 10px
-  min-width 0
-  overflow-x auto
-  scrollbar-width none
-
-  &::-webkit-scrollbar {
-    display none
-  }
-
-  @media (max-width: 560px) {
-    justify-content flex-start
-    gap 8px
-  }
-`
-
-const Pill = s`span
-  display inline-flex
-  align-items center
-  gap 7px
-  min-height 30px
-  padding 0 10px
-  border 1px solid rgba(255,255,255,.12)
-  border-radius 7px
-  background rgba(255,255,255,.06)
-  color #e9edf1
-  font-size 12px
-  white-space nowrap
-  flex 0 0 auto
-
-  @media (max-width: 560px) {
-    padding 0 9px
-    font-size 11px
-  }
-`
-
-const PlayerDot = s`span
-  display inline-block
-  width 10px
-  height 10px
-  border-radius 50%
-  box-shadow 0 0 0 2px rgba(255,255,255,.18)
-`
-
-const ToolbarButton = s`button
-  min-height 34px
-  padding 0 12px
-  border-radius 7px
-  background #f1d28a
-  color #24201a
-  font-size 13px
-  font-weight 750
-  cursor pointer
-
-  &:hover {
-    background #ffe09b
-  }
-
-  &:active {
-    transform translateY(1px)
-  }
-
-  @media (max-width: 560px) {
-    min-height 32px
-    padding 0 9px
-    font-size 12px
-  }
-`
-
-const SecondaryButton = ToolbarButton`
-  background rgba(255,255,255,.1)
-  color #f5f1e8
-  border 1px solid rgba(255,255,255,.12)
-
-  &:hover {
-    background rgba(255,255,255,.16)
-  }
-`
-
-const Workspace = s`section
-  position relative
-  min-width 0
-  min-height 0
-  overflow auto
-  background
-    radial-gradient(circle at 20% 20%, rgba(255,255,255,.08), transparent 28%),
-    linear-gradient(135deg, #1b5d41, #16513a 48%, #124434)
-`
-
-const TableSurface = s`div
-  position relative
-  width ${TABLE_WIDTH + 'px'}
-  height ${TABLE_HEIGHT + 'px'}
-  background
-    linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px),
-    radial-gradient(circle at 50% 40%, rgba(255,255,255,.07), transparent 45%),
-    var(--felt)
-  background-size 80px 80px, 80px 80px, auto, auto
-  box-shadow inset 0 0 0 18px rgba(15, 52, 38, .72), inset 0 0 120px rgba(0,0,0,.35)
-`
-
-const TableObjectShell = s`section
-  position absolute
-  z-index 2
-  border 1px solid rgba(255,255,255,.16)
-  border-radius 8px
-  background rgba(32,36,42,.9)
-  box-shadow var(--shadow)
-  overflow hidden
-  user-select none
-  cursor default
-`
-
-const ObjectHeader = s`header
-  display flex
-  align-items center
-  justify-content space-between
-  gap 10px
-  height 34px
-  padding 0 10px
-  border-bottom 1px solid rgba(255,255,255,.1)
-  background rgba(255,255,255,.06)
-  color #e8edf1
-  font-size 12px
-  font-weight 750
-  touch-action none
-`
-
-const LockBadge = s`span
-  color var(--muted)
-  font-size 11px
-  font-weight 650
-`
-
-const BoardWrap = s`div
-  padding 12px
-`
-
-const BoardGrid = s`div
-  display grid
-  grid-template-columns repeat(10, 72px)
-  grid-template-rows repeat(10, 72px)
-  gap 4px
-`
-
-const BoardCell = s`div
-  position relative
-  display grid
-  place-items center
-  width 72px
-  height 72px
-  border 1px solid rgba(44, 51, 59, .22)
-  border-radius 6px
-  background var(--paper)
-  color var(--ink)
-  box-shadow inset 0 0 0 1px rgba(255,255,255,.38)
-  cursor default
-
-  &[data-free="true"] {
-    background #d7b365
-  }
-`
-
-const CardFace = s`div
-  display grid
-  place-items center
-  gap 2px
-  width 100%
-  height 100%
-  padding 6px
-`
-
-const CardRank = s`strong
-  font-size 18px
-  line-height 1
-  letter-spacing 0
-`
-
-const CardSuit = s`span
-  font-size 12px
-  line-height 1
-  font-weight 800
-`
-
-const TableChip = s`button
-  position absolute
-  z-index 5
-  width 38px
-  height 38px
-  border-radius 50%
-  background var(--chip-color)
-  border 3px solid rgba(255,255,255,.72)
-  box-shadow 0 4px 10px rgba(0,0,0,.35), inset 0 -5px 8px rgba(0,0,0,.22), inset 0 5px 8px rgba(255,255,255,.22)
-  cursor grab
-  touch-action none
-
-  &:active {
-    cursor grabbing
-  }
-
-  &[data-dragging="true"] {
-    transform scale(1.06)
-    box-shadow 0 12px 24px rgba(0,0,0,.4), inset 0 -5px 8px rgba(0,0,0,.22), inset 0 5px 8px rgba(255,255,255,.22)
-  }
-
-  &[data-selected="true"] {
-    outline 3px solid #f1d28a
-    outline-offset 3px
-  }
-
-  &[data-locked="true"] {
-    cursor default
-    filter saturate(.75)
-  }
-`
-
-const TableCardButton = s`button
-  position absolute
-  z-index 6
-  display grid
-  width var(--piece-width)
-  height var(--piece-height)
-  border 1px solid rgba(37,42,49,.22)
-  border-radius 8px
-  background var(--paper)
-  color var(--ink)
-  box-shadow 0 16px 30px rgba(0,0,0,.34)
-  cursor grab
-  touch-action none
-  transform rotate(var(--piece-rotate))
-  transform-origin 50% 50%
-
-  &:active {
-    cursor grabbing
-  }
-
-  &[data-selected="true"] {
-    outline 3px solid #f1d28a
-    outline-offset 3px
-  }
-
-  &[data-locked="true"] {
-    cursor default
-    filter saturate(.7)
-  }
-
-  &[data-dragging="true"] {
-    z-index 60
-  }
-`
-
-const CardBack = s`div
-  display grid
-  place-items center
-  width 100%
-  height 100%
-  border-radius 7px
-  background
-    linear-gradient(45deg, rgba(255,255,255,.12) 25%, transparent 25%),
-    linear-gradient(-45deg, rgba(255,255,255,.12) 25%, transparent 25%),
-    #29313a
-  background-size 18px 18px
-  color #f5f1e8
-  font-size 13px
-  font-weight 850
-`
-
-const FreeCorner = s`span
-  display grid
-  place-items center
-  width 42px
-  height 42px
-  border-radius 50%
-  border 2px dashed rgba(45,42,32,.42)
-  color rgba(45,42,32,.72)
-  font-size 11px
-  font-weight 850
-`
-
-const DeckBody = s`div
-  display grid
-  gap 12px
-  width 180px
-  padding 14px
-`
-
-const DeckStack = s`div
-  position relative
-  display grid
-  place-items center
-  width 112px
-  height 152px
-  margin 0 auto
-  border-radius 7px
-  background #29313a
-  border 2px solid rgba(255,255,255,.16)
-  box-shadow 7px 7px 0 #1d242b, 13px 13px 0 #151b21
-  color #f5f1e8
-  font-size 13px
-  font-weight 800
-`
-
-const StackCount = s`span
-  display grid
-  place-items center
-  width 54px
-  height 54px
-  border-radius 50%
-  background #f1d28a
-  color #24201a
-  box-shadow 0 8px 20px rgba(0,0,0,.32)
-`
-
-const ObjectActions = s`div
-  display grid
-  grid-template-columns 1fr 1fr
-  gap 8px
-`
-
-const MiniButton = s`button
-  height 32px
-  border-radius 6px
-  background rgba(255,255,255,.1)
-  color #f5f1e8
-  border 1px solid rgba(255,255,255,.14)
-  cursor pointer
-  font-size 12px
-  font-weight 750
-
-  &:hover {
-    background rgba(255,255,255,.16)
-  }
-`
-
-const DiscardBody = s`div
-  display grid
-  place-items center
-  gap 10px
-  width 168px
-  padding 14px
-
-  &[data-drop-ready="true"] {
-    background rgba(241,210,138,.12)
-    box-shadow inset 0 0 0 2px rgba(241,210,138,.7)
-  }
-`
-
-const SupplyBody = s`div
-  display grid
-  gap 12px
-  width 180px
-  padding 14px
-`
-
-const SupplyRow = s`div
-  display flex
-  align-items center
-  justify-content space-between
-  gap 10px
-  height 38px
-  padding 0 10px
-  border-radius 7px
-  background rgba(255,255,255,.08)
-  color #f5f1e8
-  cursor default
-  font-size 13px
-  font-weight 750
-`
-
-const SupplyChip = s`span
-  display inline-block
-  width 22px
-  height 22px
-  border-radius 50%
-  border 2px solid rgba(255,255,255,.72)
-  box-shadow 0 3px 8px rgba(0,0,0,.3), inset 0 -4px 6px rgba(0,0,0,.2), inset 0 4px 6px rgba(255,255,255,.18)
-  cursor grab
-  touch-action none
-`
-
-const SidePanel = s`aside
-  position absolute
-  z-index 8
-  right 24px
-  top 690px
-  width 285px
-  border 1px solid rgba(255,255,255,.14)
-  border-radius 8px
-  background rgba(32,36,42,.92)
-  box-shadow var(--shadow)
-  overflow hidden
-`
-
-const PanelSection = s`section
-  padding 12px
-  border-top 1px solid rgba(255,255,255,.08)
-
-  &:first-child {
-    border-top 0
-  }
-`
-
-const PanelTitle = s`h2
-  margin-bottom 8px
-  color #f5f1e8
-  font-size 12px
-  line-height 1
-  font-weight 850
-`
-
-const MetricGrid = s`div
-  display grid
-  grid-template-columns 1fr 1fr
-  gap 8px
-`
-
-const Metric = s`div
-  display grid
-  gap 4px
-  padding 9px
-  border-radius 7px
-  background rgba(255,255,255,.07)
-`
-
-const MetricValue = s`strong
-  font-size 18px
-  line-height 1
-`
-
-const MetricLabel = s`span
-  color var(--muted)
-  font-size 11px
-  line-height 1.2
-`
-
-const LogList = s`ol
-  display grid
-  gap 7px
-`
-
-const LogItem = s`li
-  color #cdd5dd
-  font-size 12px
-  line-height 1.3
-`
-
-const HandBar = s`section
-  position relative
-  z-index 12
-  width 100vw
-  overflow visible
-  border-top 1px solid rgba(255,255,255,.1)
-  background #20242a
-  box-shadow 0 -10px 28px rgba(0,0,0,.24)
-`
-
-const HandStatus = s`div
-  position absolute
-  left 18px
-  top 16px
-  display grid
-  gap 7px
-  width 205px
-`
-
-const HandCards = s`div
-  position absolute
-  left 50%
-  bottom 14px
-  width min(760px, calc(100vw - 36px))
-  height 160px
-  transform translateX(-50%)
-  overflow visible
-
-  @media (max-width: 560px) {
-    bottom 4px
-    height 124px
-  }
-`
-
-const HandCardButton = s`button
-  position absolute
-  bottom 0
-  width 104px
-  height 142px
-  border 1px solid rgba(37,42,49,.22)
-  border-radius 8px
-  background var(--paper)
-  color var(--ink)
-  box-shadow 0 14px 28px rgba(0,0,0,.3)
-  cursor pointer
-  transform-origin 50% 140%
-  transition transform 140ms, box-shadow 140ms
-
-  &:hover {
-    transform translateY(calc(var(--card-lift) - 18px)) rotate(var(--card-rotate))
-    box-shadow 0 22px 38px rgba(0,0,0,.38)
-  }
-
-  &[selected] {
-    outline 3px solid #f1d28a
-    outline-offset 3px
-    transform translateY(calc(var(--card-lift) - 24px)) rotate(var(--card-rotate))
-  }
-
-  &[data-dragging="true"] {
-    opacity .28
-  }
-`
-
-const HandCardInner = s`div
-  display grid
-  grid-template-rows auto 1fr auto
-  width 100%
-  height 100%
-  padding 10px
-`
-
-const CornerText = s`span
-  justify-self start
-  display grid
-  gap 2px
-  font-size 15px
-  line-height 1
-  font-weight 850
-`
-
-const CenterRank = s`strong
-  place-self center
-  font-size 32px
-  line-height 1
-  letter-spacing 0
-`
-
-const BottomText = CornerText`
-  justify-self end
-  transform rotate(180deg)
-`
-
-const ActionRail = s`div
-  position absolute
-  right 18px
-  top 16px
-  display flex
-  gap 8px
-
-  @media (max-width: 560px) {
-    right 8px
-    top 14px
-    gap 6px
-    flex-direction column
-  }
-`
 
 function makeDeck(copies = 1) {
   const cards = []
@@ -956,8 +380,16 @@ function attachPointerListeners() {
       const object = objectById(dragState.objectId)
       if (!object) return
 
-      object.x = clamp(event.clientX - rect.left - dragState.offsetX, 18, TABLE_WIDTH - dragState.width - 18)
-      object.y = clamp(event.clientY - rect.top - dragState.offsetY, 18, TABLE_HEIGHT - dragState.height - 18)
+      object.x = clamp(
+        event.clientX - rect.left - dragState.offsetX,
+        TABLE_OBJECT_INSET,
+        TABLE_WIDTH - dragState.width - TABLE_OBJECT_INSET
+      )
+      object.y = clamp(
+        event.clientY - rect.top - dragState.offsetY,
+        TABLE_OBJECT_INSET,
+        TABLE_HEIGHT - dragState.height - TABLE_OBJECT_INSET
+      )
     }
 
     if (dragState.type === 'chip') {
@@ -970,7 +402,7 @@ function attachPointerListeners() {
       chip.y = event.clientY - rect.top - dragState.offsetY
     }
 
-    if (dragState.type === 'table-card') {
+    if (dragState.type === CARD_DRAG_TYPE.TABLE) {
       const piece = tableCardById(dragState.pieceId)
       if (!piece || piece.locked) return
 
@@ -980,7 +412,7 @@ function attachPointerListeners() {
       piece.y = event.clientY - rect.top - dragState.offsetY
     }
 
-    if (dragState.type === 'hand-card' || dragState.type === 'discard-card') {
+    if (dragState.type === CARD_DRAG_TYPE.HAND || dragState.type === CARD_DRAG_TYPE.DISCARD) {
       dragState.clientX = event.clientX
       dragState.clientY = event.clientY
       moveDragGhost(event.clientX, event.clientY)
@@ -1001,12 +433,12 @@ function attachPointerListeners() {
       if (currentDrag.moved) finishChipDrop(event, currentDrag)
     }
 
-    if (currentDrag.type === 'table-card') {
+    if (currentDrag.type === CARD_DRAG_TYPE.TABLE) {
       if (!currentDrag.moved) selectTableCard(currentDrag.pieceId)
       else finishTableCardDrop(event, currentDrag)
     }
 
-    if (currentDrag.type === 'hand-card') {
+    if (currentDrag.type === CARD_DRAG_TYPE.HAND) {
       if (!currentDrag.moved) {
         selectHandCard(currentDrag.cardId)
       } else {
@@ -1014,7 +446,7 @@ function attachPointerListeners() {
       }
     }
 
-    if (currentDrag.type === 'discard-card') {
+    if (currentDrag.type === CARD_DRAG_TYPE.DISCARD) {
       if (!currentDrag.moved) {
         selectDiscardCard(currentDrag.cardId)
       } else {
@@ -1088,8 +520,8 @@ function createChipFromSupply(event, playerId) {
   const chip = {
     id: `chip-${nextId++}`,
     playerId,
-    x: clamp(point.x - 19, 8, TABLE_WIDTH - 46),
-    y: clamp(point.y - 19, 8, TABLE_HEIGHT - 46)
+    x: clamp(point.x - CHIP_SIZE / 2, TABLE_PIECE_INSET, TABLE_WIDTH - CHIP_SIZE - TABLE_PIECE_INSET),
+    y: clamp(point.y - CHIP_SIZE / 2, TABLE_PIECE_INSET, TABLE_HEIGHT - CHIP_SIZE - TABLE_PIECE_INSET)
   }
 
   state.chips.push(chip)
@@ -1101,10 +533,10 @@ function createChipFromSupply(event, playerId) {
     clientX: event.clientX,
     clientY: event.clientY,
     moved: false,
-    offsetX: 19,
-    offsetY: 19,
-    width: 38,
-    height: 38
+    offsetX: CHIP_SIZE / 2,
+    offsetY: CHIP_SIZE / 2,
+    width: CHIP_SIZE,
+    height: CHIP_SIZE
   }
 
   scheduleRedraw()
@@ -1117,7 +549,7 @@ function startHandCardDrag(event, card) {
   const rect = event.currentTarget.getBoundingClientRect()
   const originRect = rectFromDomRect(rect)
   dragState = {
-    type: 'hand-card',
+    type: CARD_DRAG_TYPE.HAND,
     cardId: card.id,
     startX: event.clientX,
     startY: event.clientY,
@@ -1141,7 +573,7 @@ function startDiscardCardDrag(event, card) {
   const rect = event.currentTarget.getBoundingClientRect()
   const originRect = rectFromDomRect(rect)
   dragState = {
-    type: 'discard-card',
+    type: CARD_DRAG_TYPE.DISCARD,
     cardId: card.id,
     startX: event.clientX,
     startY: event.clientY,
@@ -1170,7 +602,7 @@ function startTableCardDrag(event, piece) {
 
   const rect = event.currentTarget.getBoundingClientRect()
   dragState = {
-    type: 'table-card',
+    type: CARD_DRAG_TYPE.TABLE,
     pieceId: piece.id,
     startX: event.clientX,
     startY: event.clientY,
@@ -1189,9 +621,11 @@ function finishHandCardDrop(event, drag) {
   const card = state.hand.find(item => item.id === drag.cardId)
   if (!card) return
 
-  if (zoneAcceptsCardDrop(zoneId, drag)) {
+  const rule = cardDropRule(zoneId, drag.type)
+
+  if (rule?.action === CARD_DROP_ACTION.MOVE_TO_DISCARD) {
     state.hand = state.hand.filter(item => item.id !== card.id)
-    state.discardPile.push({ ...card, faceUp: true })
+    state.discardPile.push({ ...card, faceUp: rule.cardFaceUpOnDrop ?? true })
     state.selectedHandCardId = null
     state.selectedDiscardCardId = card.id
     removeDragGhost()
@@ -1208,7 +642,9 @@ function finishDiscardCardDrop(event, drag) {
   const card = state.discardPile[state.discardPile.length - 1]
   if (!card || card.id !== drag.cardId) return
 
-  if (zoneId === 'hand') {
+  const rule = cardDropRule(zoneId, drag.type)
+
+  if (rule?.action === CARD_DROP_ACTION.MOVE_TO_HAND) {
     if (state.hand.length >= HAND_SIZE) {
       addLog('Hand is full.')
       returnDragGhostToOrigin(drag)
@@ -1224,7 +660,7 @@ function finishDiscardCardDrop(event, drag) {
     return
   }
 
-  if (zoneId === 'table') {
+  if (rule?.action === CARD_DROP_ACTION.PLACE_ON_TABLE) {
     const point = tablePointFromEvent(event)
     if (!point) return
 
@@ -1278,7 +714,9 @@ function finishTableCardDrop(event, drag) {
 
   const zoneId = dropZoneFromPoint(event, piece.id)
 
-  if (zoneId === 'hand') {
+  const rule = cardDropRule(zoneId, drag.type)
+
+  if (rule?.action === CARD_DROP_ACTION.MOVE_TO_HAND) {
     if (state.hand.length >= HAND_SIZE) {
       addLog('Hand is full.')
       returnDragGhostToOrigin(drag)
@@ -1294,9 +732,9 @@ function finishTableCardDrop(event, drag) {
     return
   }
 
-  if (zoneId === 'discard') {
+  if (rule?.action === CARD_DROP_ACTION.MOVE_TO_DISCARD) {
     state.tableCards = state.tableCards.filter(item => item.id !== piece.id)
-    state.discardPile.push({ ...piece.card, faceUp: true })
+    state.discardPile.push({ ...piece.card, faceUp: rule.cardFaceUpOnDrop ?? true })
     state.selectedTableCardId = null
     state.selectedDiscardCardId = piece.card.id
     removeDragGhost()
@@ -1319,11 +757,6 @@ function finishTableCardDrop(event, drag) {
   if (positionWasClamped(raw, clamped)) {
     animateDraggedPieceToTablePosition(drag, clamped)
   }
-}
-
-function zoneAcceptsCardDrop(zoneId, drag) {
-  if (drag.type === 'hand-card') return zoneId === 'discard'
-  return false
 }
 
 function dropZoneFromPoint(event, skipPieceId = null) {
@@ -1413,7 +846,7 @@ function animateDraggedPieceToTablePosition(drag, position) {
 
   window.setTimeout(() => {
     if (dragState === drag) finishDrag()
-  }, 190)
+  }, SNAP_BACK_DURATION_MS)
 }
 
 function removeDragGhost() {
@@ -1537,21 +970,21 @@ function chipTop(chip) {
 }
 
 function tableCardLeft(piece) {
-  if (dragState?.type !== 'table-card' || dragState.pieceId !== piece.id) return piece.x
+  if (dragState?.type !== CARD_DRAG_TYPE.TABLE || dragState.pieceId !== piece.id) return piece.x
   if (dragState.returning) return dragState.snapLeft
   return dragState.clientX - dragState.offsetX
 }
 
 function tableCardTop(piece) {
-  if (dragState?.type !== 'table-card' || dragState.pieceId !== piece.id) return piece.y
+  if (dragState?.type !== CARD_DRAG_TYPE.TABLE || dragState.pieceId !== piece.id) return piece.y
   if (dragState.returning) return dragState.snapTop
   return dragState.clientY - dragState.offsetY
 }
 
 function clampPiecePosition(x, y, width, height) {
   return {
-    x: clamp(x, 8, TABLE_WIDTH - width - 8),
-    y: clamp(y, 8, TABLE_HEIGHT - height - 8)
+    x: clamp(x, TABLE_PIECE_INSET, TABLE_WIDTH - width - TABLE_PIECE_INSET),
+    y: clamp(y, TABLE_PIECE_INSET, TABLE_HEIGHT - height - TABLE_PIECE_INSET)
   }
 }
 
@@ -1685,7 +1118,8 @@ const App = s(({}, [], { doc }) => {
     Workspace(
       TableSurface({
         'data-table-surface': 'true',
-        'data-drop-zone': 'table',
+        'data-drop-zone': ZONE.TABLE,
+        style: `--table-width: ${TABLE_WIDTH}px; --table-height: ${TABLE_HEIGHT}px`,
         dom: attachPointerListeners
       },
         state.objects.map(object => tableObject({ key: object.id, object })),
@@ -1741,7 +1175,7 @@ const tableObject = s(({ object }) =>
 
 const sequenceBoard = s(() =>
   BoardWrap({
-    'data-drop-zone': 'board'
+    'data-drop-zone': ZONE.BOARD
   },
     BoardGrid(
       sequenceSpaces.map(space => boardSpace({ key: space.id, space }))
@@ -1768,7 +1202,7 @@ const tableChip = s(({ chip }) =>
     left ${chipLeft(chip) + 'px'}
     top ${chipTop(chip) + 'px'}
     z-index ${dragState?.type === 'chip' && dragState.chipId === chip.id ? 60 : 5}
-    transition ${dragState?.type === 'chip' && dragState.chipId === chip.id && dragState.returning ? 'left 190ms cubic-bezier(.2,.8,.2,1), top 190ms cubic-bezier(.2,.8,.2,1)' : 'none'}
+    transition ${dragState?.type === 'chip' && dragState.chipId === chip.id && dragState.returning ? SNAP_BACK_TRANSITION : 'none'}
     --chip-color ${playerById(chip.playerId).color}
   `({
     'aria-label': `${playerById(chip.playerId).name} chip`,
@@ -1783,18 +1217,18 @@ const tableCard = s(({ piece }) => {
   const size = cardPieceSize(piece)
 
   return TableCardButton`
-    position ${dragState?.type === 'table-card' && dragState.pieceId === piece.id ? 'fixed' : 'absolute'}
+    position ${dragState?.type === CARD_DRAG_TYPE.TABLE && dragState.pieceId === piece.id ? 'fixed' : 'absolute'}
     left ${tableCardLeft(piece) + 'px'}
     top ${tableCardTop(piece) + 'px'}
-    z-index ${dragState?.type === 'table-card' && dragState.pieceId === piece.id ? 60 : 6}
-    transition ${dragState?.type === 'table-card' && dragState.pieceId === piece.id && dragState.returning ? 'left 190ms cubic-bezier(.2,.8,.2,1), top 190ms cubic-bezier(.2,.8,.2,1)' : 'none'}
+    z-index ${dragState?.type === CARD_DRAG_TYPE.TABLE && dragState.pieceId === piece.id ? 60 : 6}
+    transition ${dragState?.type === CARD_DRAG_TYPE.TABLE && dragState.pieceId === piece.id && dragState.returning ? SNAP_BACK_TRANSITION : 'none'}
     --piece-width ${size.width + 'px'}
     --piece-height ${size.height + 'px'}
     --piece-rotate ${(piece.rotation || 0) + 'deg'}
   `({
     'aria-label': `${piece.card.code} table card`,
     'data-piece-id': piece.id,
-    'data-dragging': dragState?.type === 'table-card' && dragState.pieceId === piece.id ? 'true' : 'false',
+    'data-dragging': dragState?.type === CARD_DRAG_TYPE.TABLE && dragState.pieceId === piece.id ? 'true' : 'false',
     'data-selected': state.selectedTableCardId === piece.id ? 'true' : 'false',
     'data-locked': piece.locked ? 'true' : 'false',
     onpointerdown: event => startTableCardDrag(event, piece)
@@ -1821,8 +1255,8 @@ const discardObject = s(() => {
   const top = state.discardPile[state.discardPile.length - 1]
 
   return DiscardBody({
-    'data-drop-zone': 'discard',
-    'data-drop-ready': dragState?.type === 'hand-card' ? 'true' : 'false'
+    'data-drop-zone': ZONE.DISCARD,
+    'data-drop-ready': zoneAcceptsCardDrop(ZONE.DISCARD, dragState?.type) ? 'true' : 'false'
   },
     top ? compactCard({
       card: top,
@@ -1905,7 +1339,7 @@ const sidePanel = s(() =>
 
 const handBar = s(() =>
   HandBar({
-    'data-drop-zone': 'hand'
+    'data-drop-zone': ZONE.HAND
   },
     HandStatus(
       TitleBlock(
@@ -1944,7 +1378,7 @@ const handCard = s(({ card, index, total }) => {
     transform translateY(var(--card-lift)) rotate(${rotate + 'deg'})
   `({
     selected: state.selectedHandCardId === card.id,
-    'data-dragging': dragState?.type === 'hand-card' && dragState.cardId === card.id && dragState.moved ? 'true' : 'false',
+    'data-dragging': dragState?.type === CARD_DRAG_TYPE.HAND && dragState.cardId === card.id && dragState.moved ? 'true' : 'false',
     onpointerdown: event => startHandCardDrag(event, card)
   },
     HandCardInner(
@@ -1960,13 +1394,13 @@ function handMetrics() {
 
   if (width < 560) return { width: 62, height: 88, spacing: 34, arcLift: 14, fanDegrees: 20 }
   if (width < 820) return { width: 88, height: 122, spacing: 55, arcLift: 20, fanDegrees: 24 }
-  return { width: 104, height: 142, spacing: 74, arcLift: 26, fanDegrees: 26 }
+  return { width: CARD_PORTRAIT_WIDTH, height: CARD_PORTRAIT_HEIGHT, spacing: 74, arcLift: 26, fanDegrees: 26 }
 }
 
 function cardPieceSize(piece) {
   return piece.orientation === 'landscape'
-    ? { width: 142, height: 104 }
-    : { width: 104, height: 142 }
+    ? { width: CARD_LANDSCAPE_WIDTH, height: CARD_LANDSCAPE_HEIGHT }
+    : { width: CARD_PORTRAIT_WIDTH, height: CARD_PORTRAIT_HEIGHT }
 }
 
 s.mount(() => App())
