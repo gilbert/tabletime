@@ -21,7 +21,15 @@ export const sequenceSpaces = buildSequenceSpaces()
 export function createInitialGameState({ random = Math.random } = {}) {
   const state = {
     nextId: 1,
+    started: false,
     activePlayerId: players[0].id,
+    seats: players.map(player => ({
+      playerId: player.id,
+      playerName: player.name,
+      color: player.color,
+      clientId: null,
+      clientName: null
+    })),
     selectedHandCardId: null,
     selectedTableCardId: null,
     selectedDiscardCardId: null,

@@ -53,6 +53,19 @@ export const AppShell = s`main
   background #16191d
 `
 
+export const MainContent = s`section
+  display grid
+  grid-template-columns 300px minmax(0, 1fr)
+  min-width 0
+  min-height 0
+  overflow hidden
+  background #16191d
+
+  @media (max-width: 820px) {
+    grid-template-columns 260px minmax(0, 1fr)
+  }
+`
+
 export const TopBar = s`header
   display flex
   align-items center
@@ -165,6 +178,12 @@ export const ToolbarButton = s`button
     transform translateY(1px)
   }
 
+  &:disabled {
+    cursor default
+    opacity .5
+    transform none
+  }
+
   @media (max-width: 560px) {
     min-height 32px
     padding 0 9px
@@ -179,6 +198,11 @@ export const SecondaryButton = ToolbarButton`
 
   &:hover {
     background rgba(255,255,255,.16)
+  }
+
+  &:disabled {
+    cursor default
+    opacity .5
   }
 `
 
@@ -521,16 +545,22 @@ export const SupplyChip = s`span
 `
 
 export const SidePanel = s`aside
-  position absolute
+  position relative
   z-index 8
-  right 24px
-  top 690px
-  width 285px
+  width 300px
+  min-height 0
   border 1px solid rgba(255,255,255,.14)
-  border-radius 8px
+  border-top 0
+  border-left 0
+  border-bottom 0
+  border-radius 0
   background rgba(32,36,42,.92)
   box-shadow var(--shadow)
-  overflow hidden
+  overflow auto
+
+  @media (max-width: 820px) {
+    width 260px
+  }
 `
 
 export const PanelSection = s`section
@@ -573,6 +603,62 @@ export const MetricLabel = s`span
   color var(--muted)
   font-size 11px
   line-height 1.2
+`
+
+export const SeatList = s`div
+  display grid
+  gap 8px
+`
+
+export const SeatRow = s`div
+  display grid
+  grid-template-columns 18px minmax(0, 1fr) auto
+  align-items center
+  gap 9px
+  min-height 42px
+  padding 8px
+  border-radius 7px
+  background rgba(255,255,255,.07)
+`
+
+export const SeatSwatch = s`span
+  width 14px
+  height 14px
+  border-radius 50%
+  background var(--seat-color)
+  box-shadow 0 0 0 2px rgba(255,255,255,.18)
+`
+
+export const SeatText = s`div
+  display grid
+  gap 3px
+  min-width 0
+`
+
+export const SeatName = s`strong
+  color #f5f1e8
+  font-size 12px
+  line-height 1
+  font-weight 800
+  white-space nowrap
+  overflow hidden
+  text-overflow ellipsis
+`
+
+export const SeatOccupant = s`span
+  color var(--muted)
+  font-size 11px
+  line-height 1.1
+  white-space nowrap
+  overflow hidden
+  text-overflow ellipsis
+`
+
+export const PanelActions = s`div
+  display grid
+  grid-template-columns 1fr 1fr
+  gap 8px
+  margin-top 10px
 `
 
 export const LogList = s`ol

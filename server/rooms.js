@@ -56,7 +56,12 @@ export function handleRoomMessage(ws, message) {
   if (!client || !message?.type) return
 
   if (message.type === 'command') {
-    const result = applyCommand(room.state, message.command)
+    const result = applyCommand(room.state, message.command, {
+      actor: {
+        clientId: client.id,
+        playerName: client.playerName
+      }
+    })
 
     if (!result.ok) {
       send(client.ws, {
@@ -136,7 +141,7 @@ function broadcastPresence(room, client, presence) {
       clientId: client.id,
       playerId: client.playerId,
       playerName: client.playerName,
-      color: client.color,
+      color: clientPresenceColor(room, client),
       presence
     })
   }
@@ -153,4 +158,8 @@ function send(ws, message) {
 
 function playerColor(playerId) {
   return players.find(player => player.id === playerId)?.color || players[0].color
+}
+
+function clientPresenceColor(room, client) {
+  return room.state.seats?.find(seat => seat.clientId === client.id)?.color || client.color
 }

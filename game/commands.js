@@ -15,6 +15,8 @@ import { cloneGameState, createInitialGameState, players, shuffle } from './setu
 
 export const COMMAND = Object.freeze({
   RESET: 'game.reset',
+  START: 'game.start',
+  SEAT_JOIN: 'seat.join',
   SWITCH_PLAYER: 'player.switch',
   DRAW: 'deck.draw',
   SHUFFLE_DRAW: 'deck.shuffle',
@@ -35,20 +37,26 @@ export const COMMAND = Object.freeze({
   CARD_LOCK: 'card.lock'
 })
 
-export function applyCommand(state, command, { random = Math.random } = {}) {
+export function applyCommand(state, command, { random = Math.random, actor = null } = {}) {
   if (!command?.type) return reject('Unknown command.')
 
-  const result = applyCommandMutation(state, command, random)
+  const result = applyCommandMutation(state, command, { random, actor })
   if (result.ok && result.message && command.type !== COMMAND.RESET) addLog(state, result.message)
   return result
 }
 
-function applyCommandMutation(state, command, random) {
+function applyCommandMutation(state, command, { random, actor }) {
   switch (command.type) {
     case COMMAND.RESET:
       replaceState(state, createInitialGameState({ random }))
       state.log = ['Prototype reset.']
       return accept('Prototype reset.')
+
+    case COMMAND.START:
+      return startGame(state)
+
+    case COMMAND.SEAT_JOIN:
+      return joinSeat(state, command.payload, actor)
 
     case COMMAND.SWITCH_PLAYER:
       return switchPlayer(state, command.payload)
@@ -131,6 +139,44 @@ function switchPlayer(state, payload = {}) {
   const player = players.find(item => item.id === payload.playerId)
   state.activePlayerId = payload.playerId || state.activePlayerId
   return accept(`${player?.name || payload.playerName || 'Player'} is active.`)
+}
+
+function startGame(state) {
+  ensureSeats(state)
+  if (state.started) return reject('Game is already started.')
+
+  state.started = true
+  return accept('Game started.')
+}
+
+function joinSeat(state, payload = {}, actor = null) {
+  ensureSeats(state)
+
+  if (state.started) return reject('Seats are locked after start.')
+  if (!actor?.clientId) return reject('Connection identity is required to join a seat.')
+
+  const seat = state.seats.find(item => item.playerId === payload.playerId)
+  if (!seat) return reject('Seat not found.')
+
+  if (seat.clientId && seat.clientId !== actor.clientId) {
+    return reject(`${seat.playerName} seat is already occupied.`)
+  }
+
+  for (const item of state.seats) {
+    if (item.clientId === actor.clientId && item.playerId !== seat.playerId) {
+      item.clientId = null
+      item.clientName = null
+    }
+  }
+
+  const clientName = actor.playerName || 'Player'
+  const alreadySeated = seat.clientId === actor.clientId
+  seat.clientId = actor.clientId
+  seat.clientName = clientName
+
+  return accept(alreadySeated
+    ? `${clientName} is already seated as ${seat.playerName}.`
+    : `${clientName} joined ${seat.playerName}.`)
 }
 
 function drawToHand(state, count, random) {
@@ -369,6 +415,31 @@ function reject(message) {
 function replaceState(target, source) {
   for (const key of Object.keys(target)) delete target[key]
   Object.assign(target, source)
+}
+
+function ensureSeats(state) {
+  if (typeof state.started !== 'boolean') state.started = false
+  if (!Array.isArray(state.seats)) {
+    state.seats = players.map(player => ({
+      playerId: player.id,
+      playerName: player.name,
+      color: player.color,
+      clientId: null,
+      clientName: null
+    }))
+    return
+  }
+
+  for (const player of players) {
+    if (state.seats.some(seat => seat.playerId === player.id)) continue
+    state.seats.push({
+      playerId: player.id,
+      playerName: player.name,
+      color: player.color,
+      clientId: null,
+      clientName: null
+    })
+  }
 }
 
 function clampPiecePosition(x, y, width, height) {

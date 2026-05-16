@@ -40,6 +40,7 @@ import {
   LockBadge,
   LogItem,
   LogList,
+  MainContent,
   Mark,
   Metric,
   MetricGrid,
@@ -51,8 +52,15 @@ import {
   PanelSection,
   PanelTitle,
   Pill,
+  PanelActions,
   PresenceCursor,
   SecondaryButton,
+  SeatList,
+  SeatName,
+  SeatOccupant,
+  SeatRow,
+  SeatSwatch,
+  SeatText,
   SidePanel,
   StackCount,
   StatusStrip,
@@ -88,10 +96,16 @@ let multiplayer = null
 let networkStatus = 'offline'
 let roomId = 'sequence'
 let localClientId = 'local'
+let localPlayerName = 'Player'
 let localEntityCounter = 1
 let lastPresenceSent = 0
 let lastPointer = null
 const remotePresence = new Map()
+const SERVER_AUTHORITATIVE_COMMANDS = new Set([
+  COMMAND.RESET,
+  COMMAND.START,
+  COMMAND.SEAT_JOIN
+])
 
 const state = createInitialGameState()
 
@@ -129,6 +143,34 @@ function selectedDiscardCard() {
 
 function playerById(id) {
   return players.find(player => player.id === id) || players[0]
+}
+
+function seatForClient(clientId) {
+  return state.seats?.find(seat => seat.clientId === clientId) || null
+}
+
+function seatsForDisplay() {
+  return state.seats || players.map(player => ({
+    playerId: player.id,
+    playerName: player.name,
+    color: player.color,
+    clientId: null,
+    clientName: null
+  }))
+}
+
+function occupiedSeatCount() {
+  return seatsForDisplay().filter(seat => seat.clientId).length
+}
+
+function roomCommandUnavailable() {
+  return Boolean(multiplayer && !multiplayer.connected)
+}
+
+function seatActionLabel(seat) {
+  if (seat.clientId === localClientId) return 'Joined'
+  if (seat.clientId) return 'Taken'
+  return 'Join'
 }
 
 function drawOne() {
@@ -197,12 +239,43 @@ function resetPrototype() {
   submitCommand(createCommand(COMMAND.RESET))
 }
 
+function startGame() {
+  submitCommand(createCommand(COMMAND.START))
+}
+
+function joinSeat(playerId) {
+  submitCommand(createCommand(COMMAND.SEAT_JOIN, { playerId }))
+}
+
 function addLog(message) {
   state.log = [message, ...state.log].slice(0, 5)
 }
 
 function submitCommand(command) {
-  const result = applyCommand(state, command)
+  if (SERVER_AUTHORITATIVE_COMMANDS.has(command.type) && multiplayer) {
+    if (!multiplayer.connected) {
+      const result = { ok: false, message: 'Waiting for room connection.' }
+      addLog(result.message)
+      scheduleRedraw()
+      return result
+    }
+
+    if (!multiplayer.sendCommand(command)) {
+      const result = { ok: false, message: 'Command could not be sent.' }
+      addLog(result.message)
+      scheduleRedraw()
+      return result
+    }
+
+    return { ok: true, message: null }
+  }
+
+  const result = applyCommand(state, command, {
+    actor: {
+      clientId: localClientId,
+      playerName: localPlayerName
+    }
+  })
   if (!result.ok) {
     addLog(result.message)
     scheduleRedraw()
@@ -252,6 +325,7 @@ function attachNetworking() {
     },
     onWelcome: message => {
       localClientId = message.clientId
+      localPlayerName = message.playerName || localPlayerName
       addLog(`Connected to room ${message.roomId}.`)
     },
     onSnapshot: applyAuthoritativeSnapshot,
@@ -1214,18 +1288,20 @@ const App = s(({}, [], { doc }) => {
 
   return AppShell(
     topBar(),
-    Workspace(
-      TableSurface({
-        'data-table-surface': 'true',
-        'data-drop-zone': ZONE.TABLE,
-        style: `--table-width: ${TABLE_WIDTH}px; --table-height: ${TABLE_HEIGHT}px`,
-        dom: attachPointerListeners
-      },
-        state.objects.map(object => tableObject({ key: object.id, object })),
-        state.tableCards.map(piece => tableCard({ key: piece.id, piece })),
-        state.chips.map(chip => tableChip({ key: chip.id, chip })),
-        presenceLayer(),
-        sidePanel()
+    MainContent(
+      sidePanel(),
+      Workspace(
+        TableSurface({
+          'data-table-surface': 'true',
+          'data-drop-zone': ZONE.TABLE,
+          style: `--table-width: ${TABLE_WIDTH}px; --table-height: ${TABLE_HEIGHT}px`,
+          dom: attachPointerListeners
+        },
+          state.objects.map(object => tableObject({ key: object.id, object })),
+          state.tableCards.map(piece => tableCard({ key: piece.id, piece })),
+          state.chips.map(chip => tableChip({ key: chip.id, chip })),
+          presenceLayer()
+        )
       )
     ),
     handBar()
@@ -1244,6 +1320,7 @@ const topBar = s(() =>
     StatusStrip(
       Pill('Freeform tabletop'),
       Pill(`${networkStatus} / ${roomId}`),
+      Pill(`${occupiedSeatCount()} / ${seatsForDisplay().length} seated`),
       Pill(`${state.drawPile.length} deck`),
       Pill(`${state.chips.length} chips`),
       Pill(`${state.tableCards.length} loose cards`),
@@ -1402,7 +1479,7 @@ const presenceLayer = s(() =>
       PresenceCursor`
         left ${presence.pointer.x + 'px'}
         top ${presence.pointer.y + 'px'}
-        --presence-color ${presence.color || playerById(presence.playerId).color}
+        --presence-color ${seatForClient(presence.clientId)?.color || presence.color || playerById(presence.playerId).color}
       `({ key: presence.clientId },
         s`span`(presence.playerName || 'Player')
       )
@@ -1436,21 +1513,35 @@ const cardVisual = s(({ card, faceUp = true }) =>
 const sidePanel = s(() =>
   SidePanel(
     PanelSection(
-      PanelTitle('State'),
+      PanelTitle('Game'),
       MetricGrid(
-        Metric(MetricValue(state.hand.length), MetricLabel('hand')),
-        Metric(MetricValue(state.drawPile.length), MetricLabel('draw pile')),
-        Metric(MetricValue(state.discardPile.length), MetricLabel('discard')),
-        Metric(MetricValue(state.chips.length), MetricLabel('table chips')),
-        Metric(MetricValue(state.tableCards.length), MetricLabel('loose cards'))
-      )
-    ),
-    PanelSection(
-      PanelTitle('Model'),
-      LogList(
-        ['Tabletop', 'TableObject', 'BoardGrid', 'Deck', 'Hand', 'Presence'].map(item =>
-          LogItem({ key: item }, item)
+        Metric(MetricValue(state.started ? 'Started' : 'Waiting'), MetricLabel('status')),
+        Metric(MetricValue(`${occupiedSeatCount()} / ${seatsForDisplay().length}`), MetricLabel('seated'))
+      ),
+      SeatList(
+        seatsForDisplay().map(seat =>
+          SeatRow({ key: seat.playerId },
+            SeatSwatch({ style: `--seat-color: ${seat.color}` }),
+            SeatText(
+              SeatName(seat.playerName),
+              SeatOccupant(seat.clientName || 'Open')
+            ),
+            MiniButton({
+              disabled: roomCommandUnavailable() || state.started || (seat.clientId && seat.clientId !== localClientId) ? true : undefined,
+              onclick: () => joinSeat(seat.playerId)
+            }, seatActionLabel(seat))
+          )
         )
+      ),
+      PanelActions(
+        ToolbarButton({
+          disabled: roomCommandUnavailable() || state.started ? true : undefined,
+          onclick: startGame
+        }, 'Start'),
+        SecondaryButton({
+          disabled: roomCommandUnavailable() ? true : undefined,
+          onclick: resetPrototype
+        }, 'Reset')
       )
     ),
     PanelSection(
