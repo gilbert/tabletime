@@ -1,11 +1,13 @@
 export function createMultiplayerClient({
   roomId,
-  playerName,
+  username,
+  secret,
   onStatus,
   onWelcome,
   onSnapshot,
   onPresence,
-  onRejected
+  onRejected,
+  onAuthError
 }) {
   let socket = null
   let connected = false
@@ -34,15 +36,14 @@ export function createMultiplayerClient({
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const params = new URLSearchParams()
-    if (clientId) params.set('clientId', clientId)
-    if (playerName) params.set('playerName', playerName)
+    if (username) params.set('username', username)
+    if (secret) params.set('secret', secret)
 
     socket = new WebSocket(`${protocol}//${window.location.host}/ws/rooms/${encodeURIComponent(roomId)}?${params}`)
     onStatus?.('connecting')
 
     socket.addEventListener('open', () => {
-      connected = true
-      onStatus?.('connected')
+      onStatus?.('authenticating')
     })
 
     socket.addEventListener('message', event => {
@@ -52,7 +53,11 @@ export function createMultiplayerClient({
       if (message.type === 'welcome') {
         clientId = message.clientId
         playerId = message.playerId
+        username = message.username || username
+        secret = message.secret || secret
         revision = message.revision || 0
+        connected = true
+        onStatus?.('connected')
         onWelcome?.(message)
         onSnapshot?.(message.snapshot, message)
       }
@@ -71,12 +76,19 @@ export function createMultiplayerClient({
         if (message.commandId) pendingCommands.delete(message.commandId)
         onRejected?.(message)
       }
+
+      if (message.type === 'auth_error') {
+        closed = true
+        connected = false
+        onAuthError?.(message)
+        socket.close()
+      }
     })
 
     socket.addEventListener('close', () => {
       connected = false
-      onStatus?.('disconnected')
       if (closed) return
+      onStatus?.('disconnected')
       reconnectTimer = window.setTimeout(connect, 900)
     })
 

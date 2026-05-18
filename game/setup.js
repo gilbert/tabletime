@@ -5,6 +5,48 @@ export const players = [
   { id: 'blue', name: 'Blue', color: '#2267b8' }
 ]
 
+export const gameConfigs = Object.freeze({
+  sequence: {
+    id: 'sequence',
+    name: 'Sequence',
+    minPlayersToStart: 2,
+    log: {
+      maxEntries: 100,
+      commandTypes: [
+        'game.start',
+        'seat.join',
+        'seat.leave',
+        'deck.draw',
+        'deck.shuffle',
+        'card.handToDiscard',
+        'card.discardToHand',
+        'card.discardToTable',
+        'card.tableToHand',
+        'card.tableToDiscard',
+        'card.flip',
+        'card.rotate',
+        'card.lock',
+        'chip.lock',
+        'chip.return',
+        'object.lock'
+      ]
+    }
+  },
+  blokus: {
+    id: 'blokus',
+    name: 'Blokus',
+    minPlayersToStart: 2,
+    log: {
+      maxEntries: 100,
+      commandTypes: [
+        'game.start',
+        'seat.join',
+        'seat.leave'
+      ]
+    }
+  }
+})
+
 export const suits = [
   { id: 'S', name: 'Spades', color: '#1f2937' },
   { id: 'H', name: 'Hearts', color: '#c73538' },
@@ -18,9 +60,12 @@ const cornerIndexes = new Set([0, BOARD_SIZE - 1, BOARD_SIZE * (BOARD_SIZE - 1),
 
 export const sequenceSpaces = buildSequenceSpaces()
 
-export function createInitialGameState({ random = Math.random } = {}) {
+export function createInitialGameState({ random = Math.random, gameId = 'sequence' } = {}) {
+  const gameConfig = gameConfigs[gameId] || gameConfigs.sequence
   const state = {
     nextId: 1,
+    gameId: gameConfig.id,
+    minPlayersToStart: gameConfig.minPlayersToStart,
     started: false,
     activePlayerId: players[0].id,
     seats: players.map(player => ({
@@ -40,6 +85,7 @@ export function createInitialGameState({ random = Math.random } = {}) {
     chips: [],
     tableCards: [],
     objects: initialObjects(),
+    logConfig: cloneLogConfig(gameConfig.log),
     log: ['Prototype loaded with a Sequence reference setup.']
   }
 
@@ -133,6 +179,13 @@ export function shuffle(cards, random = Math.random) {
 
 export function cloneGameState(state) {
   return JSON.parse(JSON.stringify(state))
+}
+
+function cloneLogConfig(logConfig) {
+  return {
+    maxEntries: logConfig?.maxEntries || 100,
+    commandTypes: [...(logConfig?.commandTypes || [])]
+  }
 }
 
 function buildSequenceSpaces() {

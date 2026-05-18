@@ -17,6 +17,9 @@ import {
 import {
   ActionRail,
   AppShell,
+  AuthField,
+  AuthOverlay,
+  AuthPanel,
   BoardCell,
   BoardGrid,
   BoardWrap,
@@ -32,6 +35,8 @@ import {
   DeckStack,
   DiscardBody,
   FreeCorner,
+  FormError,
+  FormNote,
   HandBar,
   HandCardButton,
   HandCardInner,
@@ -40,6 +45,7 @@ import {
   LockBadge,
   LogItem,
   LogList,
+  LogPanelSection,
   MainContent,
   Mark,
   Metric,
@@ -97,6 +103,9 @@ let networkStatus = 'offline'
 let roomId = 'sequence'
 let localClientId = 'local'
 let localPlayerName = 'Player'
+let loginRequired = false
+let loginError = ''
+let loginInputValue = ''
 let localEntityCounter = 1
 let lastPresenceSent = 0
 let lastPointer = null
@@ -104,7 +113,8 @@ const remotePresence = new Map()
 const SERVER_AUTHORITATIVE_COMMANDS = new Set([
   COMMAND.RESET,
   COMMAND.START,
-  COMMAND.SEAT_JOIN
+  COMMAND.SEAT_JOIN,
+  COMMAND.SEAT_LEAVE
 ])
 
 const state = createInitialGameState()
@@ -163,12 +173,20 @@ function occupiedSeatCount() {
   return seatsForDisplay().filter(seat => seat.clientId).length
 }
 
+function minPlayersToStart() {
+  return state.minPlayersToStart || 1
+}
+
+function canStartGame() {
+  return !state.started && occupiedSeatCount() >= minPlayersToStart()
+}
+
 function roomCommandUnavailable() {
   return Boolean(multiplayer && !multiplayer.connected)
 }
 
 function seatActionLabel(seat) {
-  if (seat.clientId === localClientId) return 'Joined'
+  if (seat.clientId === localClientId) return '(you)'
   if (seat.clientId) return 'Taken'
   return 'Join'
 }
@@ -235,7 +253,8 @@ function selectChip(chipId) {
   state.selectedDiscardCardId = null
 }
 
-function resetPrototype() {
+function resetPrototype({ confirm = false } = {}) {
+  if (confirm && !confirmAction('Reset the game for everyone in this room?')) return
   submitCommand(createCommand(COMMAND.RESET))
 }
 
@@ -247,8 +266,28 @@ function joinSeat(playerId) {
   submitCommand(createCommand(COMMAND.SEAT_JOIN, { playerId }))
 }
 
+function leaveSeat(playerId) {
+  submitCommand(createCommand(COMMAND.SEAT_LEAVE, { playerId }))
+}
+
+function handleSeatAction(seat) {
+  if (seat.clientId === localClientId) {
+    if (!confirmAction(`Leave the ${seat.playerName} seat?`)) return
+    leaveSeat(seat.playerId)
+    return
+  }
+
+  joinSeat(seat.playerId)
+}
+
+function confirmAction(message) {
+  if (s.is.server) return false
+  return window.confirm(message)
+}
+
 function addLog(message) {
-  state.log = [message, ...state.log].slice(0, 5)
+  const maxEntries = Number(state.logConfig?.maxEntries) || 100
+  state.log = [...(state.log || []), message].slice(-maxEntries)
 }
 
 function submitCommand(command) {
@@ -298,6 +337,7 @@ function applyAuthoritativeSnapshot(snapshot) {
   applySnapshot(state, snapshot)
   Object.assign(state, selection)
   pruneMissingSelections()
+  pruneUnseatedPresence()
   scheduleRedraw()
 }
 
@@ -308,34 +348,134 @@ function pruneMissingSelections() {
   if (state.selectedChipId && !chipById(state.selectedChipId)) state.selectedChipId = null
 }
 
+function pruneUnseatedPresence() {
+  for (const clientId of remotePresence.keys()) {
+    if (!seatForClient(clientId)) remotePresence.delete(clientId)
+  }
+}
+
 function attachNetworking() {
   if (networkAttached || s.is.server) return
   networkAttached = true
 
   const params = new URLSearchParams(window.location.search)
   roomId = params.get('room') || roomId
-  const playerName = params.get('name') || null
+  const credentials = loadRoomCredentials(roomId)
 
+  if (!credentials) {
+    loginRequired = true
+    networkStatus = 'login required'
+    scheduleRedraw()
+    return
+  }
+
+  connectToRoom(credentials)
+}
+
+function connectToRoom(credentials) {
   multiplayer = createMultiplayerClient({
     roomId,
-    playerName,
+    username: credentials.username,
+    secret: credentials.secret,
     onStatus: status => {
       networkStatus = status
       scheduleRedraw()
     },
     onWelcome: message => {
       localClientId = message.clientId
-      localPlayerName = message.playerName || localPlayerName
+      localPlayerName = message.username || message.playerName || localPlayerName
+      loginRequired = false
+      loginError = ''
+      saveRoomCredentials(roomId, {
+        username: localPlayerName,
+        secret: message.secret
+      })
       addLog(`Connected to room ${message.roomId}.`)
     },
     onSnapshot: applyAuthoritativeSnapshot,
     onPresence: updateRemotePresence,
+    onAuthError: handleAuthError,
     onRejected: message => {
       if (message.reason) addLog(message.reason)
       if (message.snapshot) applyAuthoritativeSnapshot(message.snapshot)
       else scheduleRedraw()
     }
   })
+}
+
+function handleAuthError(message) {
+  const reason = message.reason || 'Username could not be used.'
+  clearRoomCredentials(roomId)
+  multiplayer = null
+  loginRequired = true
+  loginError = reason
+  networkStatus = 'login required'
+  addLog(reason)
+  scheduleRedraw()
+}
+
+function submitUsername(event) {
+  event.preventDefault()
+  const username = loginInputValue.trim()
+
+  if (!isValidUsername(username)) {
+    loginError = 'Use lowercase letters with single spaces only between words.'
+    scheduleRedraw()
+    return
+  }
+
+  loginRequired = false
+  loginError = ''
+  networkStatus = 'connecting'
+  connectToRoom({ username, secret: null })
+  scheduleRedraw()
+}
+
+function updateLoginInput(event) {
+  loginInputValue = sanitizeUsernameInput(event.target.value)
+  event.target.value = loginInputValue
+}
+
+function sanitizeUsernameInput(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z ]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/^\s+/, '')
+    .slice(0, 32)
+}
+
+function isValidUsername(username) {
+  return /^[a-z]+(?: [a-z]+)*$/.test(username)
+}
+
+function roomCredentialKey(room) {
+  return `tabletime:room:${room}:identity`
+}
+
+function loadRoomCredentials(room) {
+  try {
+    const raw = window.localStorage.getItem(roomCredentialKey(room))
+    if (!raw) return null
+    const credentials = JSON.parse(raw)
+    if (!isValidUsername(credentials?.username) || !credentials?.secret) return null
+    return credentials
+  } catch {
+    return null
+  }
+}
+
+function saveRoomCredentials(room, credentials) {
+  if (!credentials.username || !credentials.secret) return
+  try {
+    window.localStorage.setItem(roomCredentialKey(room), JSON.stringify(credentials))
+  } catch {}
+}
+
+function clearRoomCredentials(room) {
+  try {
+    window.localStorage.removeItem(roomCredentialKey(room))
+  } catch {}
 }
 
 function updateRemotePresence(message) {
@@ -1304,7 +1444,8 @@ const App = s(({}, [], { doc }) => {
         )
       )
     ),
-    handBar()
+    handBar(),
+    loginRequired && loginOverlay()
   )
 })
 
@@ -1324,7 +1465,32 @@ const topBar = s(() =>
       Pill(`${state.drawPile.length} deck`),
       Pill(`${state.chips.length} chips`),
       Pill(`${state.tableCards.length} loose cards`),
-      SecondaryButton({ onclick: resetPrototype }, 'Reset')
+      SecondaryButton({ onclick: () => resetPrototype({ confirm: true }) }, 'Reset')
+    )
+  )
+)
+
+const loginOverlay = s(() =>
+  AuthOverlay(
+    AuthPanel({
+      onsubmit: submitUsername
+    },
+      TitleBlock(
+        Title('Join Room'),
+        Subtitle(`Room ${roomId}`)
+      ),
+      AuthField({
+        name: 'username',
+        value: loginInputValue,
+        placeholder: 'username',
+        autocomplete: 'name',
+        autofocus: true,
+        pattern: '[a-z]+( [a-z]+)*',
+        maxlength: 32,
+        oninput: updateLoginInput
+      }),
+      loginError ? FormError(loginError) : FormNote('Lowercase letters only. Use single spaces between words.'),
+      ToolbarButton({ type: 'submit' }, 'Join')
     )
   )
 )
@@ -1474,16 +1640,19 @@ const supplyObject = s(() =>
 
 const presenceLayer = s(() =>
   Array.from(remotePresence.values())
-    .filter(presence => presence.pointer)
-    .map(presence =>
+    .filter(presence => presence.pointer && seatForClient(presence.clientId))
+    .map(presence => {
+      const seat = seatForClient(presence.clientId)
+      return (
       PresenceCursor`
         left ${presence.pointer.x + 'px'}
         top ${presence.pointer.y + 'px'}
-        --presence-color ${seatForClient(presence.clientId)?.color || presence.color || playerById(presence.playerId).color}
+        --presence-color ${seat.color}
       `({ key: presence.clientId },
-        s`span`(presence.playerName || 'Player')
+        s`span`(seat.clientName || presence.playerName || 'Player')
       )
-    )
+      )
+    })
 )
 
 const compactCard = s(({ card, selected = false, onpointerdown }) =>
@@ -1528,23 +1697,19 @@ const sidePanel = s(() =>
             ),
             MiniButton({
               disabled: roomCommandUnavailable() || state.started || (seat.clientId && seat.clientId !== localClientId) ? true : undefined,
-              onclick: () => joinSeat(seat.playerId)
+              onclick: () => handleSeatAction(seat)
             }, seatActionLabel(seat))
           )
         )
       ),
       PanelActions(
         ToolbarButton({
-          disabled: roomCommandUnavailable() || state.started ? true : undefined,
+          disabled: roomCommandUnavailable() || !canStartGame() ? true : undefined,
           onclick: startGame
-        }, 'Start'),
-        SecondaryButton({
-          disabled: roomCommandUnavailable() ? true : undefined,
-          onclick: resetPrototype
-        }, 'Reset')
+        }, 'Start')
       )
     ),
-    PanelSection(
+    LogPanelSection(
       PanelTitle('Log'),
       LogList(
         state.log.map((item, index) => LogItem({ key: `${index}-${item}` }, item))

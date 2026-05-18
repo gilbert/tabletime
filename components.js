@@ -485,6 +485,8 @@ export const ObjectActions = s`div
 
 export const MiniButton = s`button
   height 32px
+  min-width 58px
+  padding 0 12px
   border-radius 6px
   background rgba(255,255,255,.1)
   color #f5f1e8
@@ -496,6 +498,59 @@ export const MiniButton = s`button
   &:hover {
     background rgba(255,255,255,.16)
   }
+
+  &:disabled {
+    cursor default
+    opacity .5
+  }
+`
+
+export const AuthOverlay = s`section
+  position fixed
+  inset 0
+  z-index 200
+  display grid
+  place-items center
+  padding 18px
+  background rgba(13,16,20,.74)
+  backdrop-filter blur(8px)
+`
+
+export const AuthPanel = s`form
+  display grid
+  gap 12px
+  width min(360px, 100%)
+  padding 18px
+  border 1px solid rgba(255,255,255,.16)
+  border-radius 8px
+  background #20242a
+  box-shadow var(--shadow)
+`
+
+export const AuthField = s`input
+  width 100%
+  height 38px
+  padding 0 10px
+  border 1px solid rgba(255,255,255,.18)
+  border-radius 7px
+  background rgba(255,255,255,.08)
+  color #f5f1e8
+  font-size 14px
+  outline none
+
+  &:focus {
+    border-color #f1d28a
+  }
+`
+
+export const FormNote = s`p
+  color var(--muted)
+  font-size 12px
+  line-height 1.35
+`
+
+export const FormError = FormNote`
+  color #ffb6aa
 `
 
 export const DiscardBody = s`div
@@ -547,6 +602,8 @@ export const SupplyChip = s`span
 export const SidePanel = s`aside
   position relative
   z-index 8
+  display grid
+  grid-template-rows auto minmax(0, 1fr)
   width 300px
   min-height 0
   border 1px solid rgba(255,255,255,.14)
@@ -556,7 +613,7 @@ export const SidePanel = s`aside
   border-radius 0
   background rgba(32,36,42,.92)
   box-shadow var(--shadow)
-  overflow auto
+  overflow hidden
 
   @media (max-width: 820px) {
     width 260px
@@ -566,10 +623,17 @@ export const SidePanel = s`aside
 export const PanelSection = s`section
   padding 12px
   border-top 1px solid rgba(255,255,255,.08)
+  min-height 0
 
   &:first-child {
     border-top 0
   }
+`
+
+export const LogPanelSection = PanelSection`
+  display grid
+  grid-template-rows auto minmax(0, 1fr)
+  overflow hidden
 `
 
 export const PanelTitle = s`h2
@@ -608,6 +672,7 @@ export const MetricLabel = s`span
 export const SeatList = s`div
   display grid
   gap 8px
+  margin-top 12px
 `
 
 export const SeatRow = s`div
@@ -656,14 +721,19 @@ export const SeatOccupant = s`span
 
 export const PanelActions = s`div
   display grid
-  grid-template-columns 1fr 1fr
+  grid-template-columns 1fr
   gap 8px
   margin-top 10px
 `
 
 export const LogList = s`ol
-  display grid
+  display flex
+  flex-direction column
   gap 7px
+  min-height 0
+  overflow auto
+  padding-right 4px
+  scrollbar-width thin
 `
 
 export const LogItem = s`li

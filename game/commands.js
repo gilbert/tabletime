@@ -17,6 +17,7 @@ export const COMMAND = Object.freeze({
   RESET: 'game.reset',
   START: 'game.start',
   SEAT_JOIN: 'seat.join',
+  SEAT_LEAVE: 'seat.leave',
   SWITCH_PLAYER: 'player.switch',
   DRAW: 'deck.draw',
   SHUFFLE_DRAW: 'deck.shuffle',
@@ -41,14 +42,14 @@ export function applyCommand(state, command, { random = Math.random, actor = nul
   if (!command?.type) return reject('Unknown command.')
 
   const result = applyCommandMutation(state, command, { random, actor })
-  if (result.ok && result.message && command.type !== COMMAND.RESET) addLog(state, result.message)
+  if (result.ok && result.message && shouldLogCommand(state, command.type)) addLog(state, result.message)
   return result
 }
 
 function applyCommandMutation(state, command, { random, actor }) {
   switch (command.type) {
     case COMMAND.RESET:
-      replaceState(state, createInitialGameState({ random }))
+      replaceState(state, createInitialGameState({ random, gameId: state.gameId }))
       state.log = ['Prototype reset.']
       return accept('Prototype reset.')
 
@@ -57,6 +58,9 @@ function applyCommandMutation(state, command, { random, actor }) {
 
     case COMMAND.SEAT_JOIN:
       return joinSeat(state, command.payload, actor)
+
+    case COMMAND.SEAT_LEAVE:
+      return leaveSeat(state, command.payload, actor)
 
     case COMMAND.SWITCH_PLAYER:
       return switchPlayer(state, command.payload)
@@ -144,6 +148,11 @@ function switchPlayer(state, payload = {}) {
 function startGame(state) {
   ensureSeats(state)
   if (state.started) return reject('Game is already started.')
+  const occupiedSeatCount = state.seats.filter(seat => seat.clientId).length
+  const minPlayersToStart = state.minPlayersToStart || 1
+  if (occupiedSeatCount < minPlayersToStart) {
+    return reject(`At least ${minPlayersToStart} players must be seated to start.`)
+  }
 
   state.started = true
   return accept('Game started.')
@@ -177,6 +186,23 @@ function joinSeat(state, payload = {}, actor = null) {
   return accept(alreadySeated
     ? `${clientName} is already seated as ${seat.playerName}.`
     : `${clientName} joined ${seat.playerName}.`)
+}
+
+function leaveSeat(state, payload = {}, actor = null) {
+  ensureSeats(state)
+
+  if (state.started) return reject('Seats are locked after start.')
+  if (!actor?.clientId) return reject('Connection identity is required to leave a seat.')
+
+  const seat = state.seats.find(item => item.playerId === payload.playerId)
+  if (!seat) return reject('Seat not found.')
+  if (seat.clientId !== actor.clientId) return reject('You are not seated there.')
+
+  const clientName = seat.clientName || actor.playerName || 'Player'
+  seat.clientId = null
+  seat.clientName = null
+
+  return accept(`${clientName} left ${seat.playerName}.`)
 }
 
 function drawToHand(state, count, random) {
@@ -401,7 +427,14 @@ function topDiscardCard(state) {
 }
 
 function addLog(state, message) {
-  state.log = [message, ...state.log].slice(0, 5)
+  ensureLogConfig(state)
+  state.log = [...(state.log || []), message].slice(-state.logConfig.maxEntries)
+}
+
+function shouldLogCommand(state, commandType) {
+  if (commandType === COMMAND.RESET) return false
+  ensureLogConfig(state)
+  return state.logConfig.commandTypes.includes(commandType)
 }
 
 function accept(message) {
@@ -419,6 +452,9 @@ function replaceState(target, source) {
 
 function ensureSeats(state) {
   if (typeof state.started !== 'boolean') state.started = false
+  if (!state.gameId) state.gameId = 'sequence'
+  if (!state.minPlayersToStart) state.minPlayersToStart = 2
+  ensureLogConfig(state)
   if (!Array.isArray(state.seats)) {
     state.seats = players.map(player => ({
       playerId: player.id,
@@ -440,6 +476,35 @@ function ensureSeats(state) {
       clientName: null
     })
   }
+}
+
+function ensureLogConfig(state) {
+  if (!state.logConfig) {
+    state.logConfig = {
+      maxEntries: 100,
+      commandTypes: [
+        COMMAND.START,
+        COMMAND.SEAT_JOIN,
+        COMMAND.SEAT_LEAVE,
+        COMMAND.DRAW,
+        COMMAND.SHUFFLE_DRAW,
+        COMMAND.CARD_HAND_TO_DISCARD,
+        COMMAND.CARD_DISCARD_TO_HAND,
+        COMMAND.CARD_DISCARD_TO_TABLE,
+        COMMAND.CARD_TABLE_TO_HAND,
+        COMMAND.CARD_TABLE_TO_DISCARD,
+        COMMAND.CARD_FLIP,
+        COMMAND.CARD_ROTATE,
+        COMMAND.CARD_LOCK,
+        COMMAND.CHIP_LOCK,
+        COMMAND.CHIP_RETURN,
+        COMMAND.OBJECT_LOCK
+      ]
+    }
+  }
+
+  state.logConfig.maxEntries = Number(state.logConfig.maxEntries) || 100
+  if (!Array.isArray(state.logConfig.commandTypes)) state.logConfig.commandTypes = []
 }
 
 function clampPiecePosition(x, y, width, height) {
