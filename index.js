@@ -15,7 +15,6 @@ import {
   TABLE_WIDTH
 } from './constants.js'
 import {
-  ActionRail,
   AppShell,
   AuthField,
   AuthOverlay,
@@ -60,6 +59,11 @@ import {
   Pill,
   PanelActions,
   PresenceCursor,
+  RemoteHandBack,
+  RemoteHandCards,
+  RemoteHandLabel,
+  RemoteHandsLayer,
+  RemoteHandZone,
   SecondaryButton,
   SeatList,
   SeatName,
@@ -94,7 +98,6 @@ installGlobalStyles()
 
 let dragState = null
 let dragGhost = null
-let drawAnimationActive = false
 let pointerListenersAttached = false
 let networkAttached = false
 let redrawQueued = false
@@ -114,7 +117,10 @@ const SERVER_AUTHORITATIVE_COMMANDS = new Set([
   COMMAND.RESET,
   COMMAND.START,
   COMMAND.SEAT_JOIN,
-  COMMAND.SEAT_LEAVE
+  COMMAND.SEAT_LEAVE,
+  COMMAND.DRAW,
+  COMMAND.SHUFFLE_DRAW,
+  COMMAND.CARD_HAND_TO_DISCARD
 ])
 
 const state = createInitialGameState()
@@ -132,7 +138,7 @@ function objectById(id) {
 }
 
 function selectedHandCard() {
-  return state.hand.find(card => card.id === state.selectedHandCardId)
+  return localHandCards().find(card => card.id === state.selectedHandCardId)
 }
 
 function chipById(id) {
@@ -159,6 +165,10 @@ function seatForClient(clientId) {
   return state.seats?.find(seat => seat.clientId === clientId) || null
 }
 
+function localSeat() {
+  return seatForClient(localClientId)
+}
+
 function seatsForDisplay() {
   return state.seats || players.map(player => ({
     playerId: player.id,
@@ -167,6 +177,26 @@ function seatsForDisplay() {
     clientId: null,
     clientName: null
   }))
+}
+
+function handValueForPlayer(playerId) {
+  return state.handsByPlayerId?.[playerId] || []
+}
+
+function handCardsForPlayer(playerId) {
+  const hand = handValueForPlayer(playerId)
+  return Array.isArray(hand) ? hand : []
+}
+
+function localHandCards() {
+  const seat = localSeat()
+  return seat ? handCardsForPlayer(seat.playerId) : []
+}
+
+function handCountForPlayer(playerId) {
+  const hand = handValueForPlayer(playerId)
+  if (Array.isArray(hand)) return hand.length
+  return Math.max(0, Number(hand?.count) || 0)
 }
 
 function occupiedSeatCount() {
@@ -192,33 +222,21 @@ function seatActionLabel(seat) {
 }
 
 function drawOne() {
-  if (drawAnimationActive) return
-
-  if (state.hand.length >= HAND_SIZE) {
-    addLog('Hand is full.')
-    return
-  }
-
-  if (!state.drawPile.length && !state.discardPile.length) {
-    addLog('Draw deck is empty.')
-    return
-  }
-
-  if (s.is.server) {
-    submitCommand(createCommand(COMMAND.DRAW, { count: 1 }))
-    return
-  }
-
-  drawAnimationActive = true
-  animateDrawToHand().finally(() => {
-    drawAnimationActive = false
-    submitCommand(createCommand(COMMAND.DRAW, { count: 1 }))
-    scheduleRedraw()
-  })
+  submitCommand(createCommand(COMMAND.DRAW, { count: 1 }))
 }
 
 function shuffleDrawPile() {
   submitCommand(createCommand(COMMAND.SHUFFLE_DRAW))
+}
+
+function drawUnavailableReason() {
+  if (!state.started) return 'Start the game before drawing.'
+  const seat = localSeat()
+  if (!seat) return 'Join a seat before drawing.'
+  if (localHandCards().length >= HAND_SIZE) return 'Hand is full.'
+  if (!state.drawPile.length && !state.discardPile.length) return 'Draw deck is empty.'
+  if (roomCommandUnavailable()) return 'Waiting for room connection.'
+  return ''
 }
 
 function selectHandCard(cardId) {
@@ -512,7 +530,6 @@ function sendPresence(pointer = lastPointer, options = {}) {
 
 function currentSelection() {
   if (state.selectedTableCardId) return { kind: 'table-card', id: state.selectedTableCardId }
-  if (state.selectedHandCardId) return { kind: 'hand-card', id: state.selectedHandCardId }
   if (state.selectedDiscardCardId) return { kind: 'discard-card', id: state.selectedDiscardCardId }
   if (state.selectedChipId) return { kind: 'chip', id: state.selectedChipId }
   return null
@@ -539,7 +556,6 @@ function dragPresence() {
     return { ...base, kind: 'table-card', id: dragState.pieceId, x: piece?.x, y: piece?.y }
   }
 
-  if (dragState.type === CARD_DRAG_TYPE.HAND) return { kind: 'hand-card', id: dragState.cardId }
   if (dragState.type === CARD_DRAG_TYPE.DISCARD) return { kind: 'discard-card', id: dragState.cardId }
 
   if (dragState.type === 'object') {
@@ -778,7 +794,8 @@ function startHandCardDrag(event, card) {
   event.preventDefault()
   event.stopPropagation()
 
-  const rect = event.currentTarget.getBoundingClientRect()
+  const source = event.target.closest?.('[data-hand-card="true"]') || event.currentTarget
+  const rect = source.getBoundingClientRect()
   const originRect = rectFromDomRect(rect)
   dragState = {
     type: CARD_DRAG_TYPE.HAND,
@@ -795,7 +812,7 @@ function startHandCardDrag(event, card) {
     rotation: 0,
     originRect
   }
-  createDragGhost(event.currentTarget, dragState)
+  createDragGhost(source, dragState)
   sendPresence(tablePointFromEvent(event), { force: true })
 }
 
@@ -853,7 +870,7 @@ function startTableCardDrag(event, piece) {
 
 function finishHandCardDrop(event, drag) {
   const zoneId = dropZoneFromPoint(event)
-  const card = state.hand.find(item => item.id === drag.cardId)
+  const card = localHandCards().find(item => item.id === drag.cardId)
   if (!card) return
 
   const rule = cardDropRule(zoneId, drag.type)
@@ -867,6 +884,7 @@ function finishHandCardDrop(event, drag) {
       returnDragGhostToOrigin(drag)
       return
     }
+
     state.selectedHandCardId = null
     state.selectedDiscardCardId = card.id
     removeDragGhost()
@@ -883,22 +901,6 @@ function finishDiscardCardDrop(event, drag) {
   if (!card || card.id !== drag.cardId) return
 
   const rule = cardDropRule(zoneId, drag.type)
-
-  if (rule?.action === CARD_DROP_ACTION.MOVE_TO_HAND) {
-    const result = submitCommand(createCommand(COMMAND.CARD_DISCARD_TO_HAND, {
-      cardId: card.id,
-      zoneId
-    }))
-    if (!result.ok) {
-      returnDragGhostToOrigin(drag)
-      return
-    }
-
-    state.selectedDiscardCardId = null
-    state.selectedHandCardId = card.id
-    removeDragGhost()
-    return
-  }
 
   if (rule?.action === CARD_DROP_ACTION.PLACE_ON_TABLE) {
     const point = tablePointFromEvent(event)
@@ -963,22 +965,6 @@ function finishTableCardDrop(event, drag) {
   const zoneId = dropZoneFromPoint(event, piece.id)
 
   const rule = cardDropRule(zoneId, drag.type)
-
-  if (rule?.action === CARD_DROP_ACTION.MOVE_TO_HAND) {
-    const result = submitCommand(createCommand(COMMAND.CARD_TABLE_TO_HAND, {
-      pieceId: piece.id,
-      zoneId
-    }))
-    if (!result.ok) {
-      finishDrag()
-      return
-    }
-
-    state.selectedTableCardId = null
-    state.selectedHandCardId = piece.card.id
-    removeDragGhost()
-    return
-  }
 
   if (rule?.action === CARD_DROP_ACTION.MOVE_TO_DISCARD) {
     const result = submitCommand(createCommand(COMMAND.CARD_TABLE_TO_DISCARD, {
@@ -1122,88 +1108,12 @@ function finishDrag() {
   scheduleRedraw()
 }
 
-async function animateDrawToHand() {
-  const source = document.querySelector('[data-draw-stack="true"]')
-  const targetRect = nextHandCardRect()
-
-  if (!source || !targetRect) return
-
-  const sourceRect = source.getBoundingClientRect()
-  const ghost = document.createElement('div')
-
-  Object.assign(ghost.style, {
-    position: 'fixed',
-    left: sourceRect.left + sourceRect.width / 2 - targetRect.width / 2 + 'px',
-    top: sourceRect.top + sourceRect.height / 2 - targetRect.height / 2 + 'px',
-    width: targetRect.width + 'px',
-    height: targetRect.height + 'px',
-    zIndex: '55',
-    pointerEvents: 'none',
-    border: '1px solid rgba(255,255,255,.22)',
-    borderRadius: '8px',
-    background: '#29313a',
-    boxShadow: '0 24px 44px rgba(0,0,0,.42)',
-    opacity: '.98'
-  })
-
-  ghost.textContent = 'TABLETIME'
-  ghost.style.display = 'grid'
-  ghost.style.placeItems = 'center'
-  ghost.style.color = '#f5f1e8'
-  ghost.style.fontSize = '13px'
-  ghost.style.fontWeight = '850'
-
-  document.body.appendChild(ghost)
-
-  await ghost.animate([
-    {
-      left: ghost.style.left,
-      top: ghost.style.top,
-      opacity: .92,
-      transform: 'scale(.92)'
-    },
-    {
-      left: targetRect.left + 'px',
-      top: targetRect.top + 'px',
-      opacity: 1,
-      transform: 'scale(1)'
-    }
-  ], {
-    duration: 260,
-    easing: 'cubic-bezier(.2,.8,.2,1)',
-    fill: 'forwards'
-  }).finished.finally(() => {
-    ghost.remove()
-  })
-}
-
 function rectFromDomRect(rect) {
   return {
     left: rect.left,
     top: rect.top,
     width: rect.width,
     height: rect.height
-  }
-}
-
-function nextHandCardRect() {
-  const hand = document.querySelector('[data-hand-cards="true"]')
-  if (!hand) return null
-
-  const metrics = handMetrics()
-  const total = state.hand.length + 1
-  const index = state.hand.length
-  const spacing = total <= 1 ? 0 : metrics.spacing
-  const totalWidth = (total - 1) * spacing + metrics.width
-  const progress = total <= 1 ? 0.5 : index / (total - 1)
-  const lift = total <= 1 ? 0 : Math.sin(progress * Math.PI) * metrics.arcLift
-  const handRect = hand.getBoundingClientRect()
-
-  return {
-    left: handRect.left + handRect.width / 2 - totalWidth / 2 + index * spacing,
-    top: handRect.bottom - metrics.height - lift,
-    width: metrics.width,
-    height: metrics.height
   }
 }
 
@@ -1355,16 +1265,6 @@ function handleKeyDown(event) {
     }
   }
 
-  if (key === 't') {
-    if (piece) {
-      takeTableCardToHand(piece)
-      scheduleRedraw()
-    } else if (selectedDiscardCard()) {
-      takeDiscardCardToHand()
-      scheduleRedraw()
-    }
-  }
-
   if (event.key === 'Backspace' && state.selectedChipId) {
     const chip = chipById(state.selectedChipId)
     if (!chip) return
@@ -1372,32 +1272,6 @@ function handleKeyDown(event) {
     submitCommand(createCommand(COMMAND.CHIP_RETURN, { chipId: chip.id }))
     state.selectedChipId = null
   }
-}
-
-function takeTableCardToHand(piece) {
-  const result = submitCommand(createCommand(COMMAND.CARD_TABLE_TO_HAND, {
-    pieceId: piece.id,
-    zoneId: ZONE.HAND
-  }))
-  if (!result.ok) return
-
-  state.selectedTableCardId = null
-  state.selectedHandCardId = piece.card.id
-}
-
-function takeDiscardCardToHand() {
-  const card = selectedDiscardCard()
-  const top = state.discardPile[state.discardPile.length - 1]
-  if (!card || !top || card.id !== top.id) return
-
-  const result = submitCommand(createCommand(COMMAND.CARD_DISCARD_TO_HAND, {
-    cardId: card.id,
-    zoneId: ZONE.HAND
-  }))
-  if (!result.ok) return
-
-  state.selectedDiscardCardId = null
-  state.selectedHandCardId = card.id
 }
 
 function isTypingTarget(target) {
@@ -1438,6 +1312,7 @@ const App = s(({}, [], { doc }) => {
           dom: attachPointerListeners
         },
           state.objects.map(object => tableObject({ key: object.id, object })),
+          remoteHands(),
           state.tableCards.map(piece => tableCard({ key: piece.id, piece })),
           state.chips.map(chip => tableChip({ key: chip.id, chip })),
           presenceLayer()
@@ -1505,7 +1380,8 @@ const tableObject = s(({ object }) => {
     z-index ${localDragging ? 60 : remoteDragging ? 55 : 2}
     transition ${remoteDragging ? 'left 45ms linear, top 45ms linear' : 'none'}
   `({
-    'data-table-object': 'true'
+    'data-table-object': 'true',
+    'data-drop-zone': object.type === 'discard' ? ZONE.DISCARD : undefined
   },
     ObjectHeader`
       cursor ${object.locked ? 'default' : localDragging ? 'grabbing' : 'grab'}
@@ -1591,19 +1467,30 @@ const tableCard = s(({ piece }) => {
   )
 })
 
-const deckObject = s(() =>
-  DeckBody(
+const deckObject = s(() => {
+  const reason = drawUnavailableReason()
+
+  return DeckBody(
     DeckStack({
       'data-draw-stack': 'true'
     },
       StackCount(state.drawPile.length)
     ),
     ObjectActions(
-      MiniButton({ 'data-no-drag': 'true', onclick: drawOne }, 'Draw'),
-      MiniButton({ 'data-no-drag': 'true', onclick: shuffleDrawPile }, 'Shuffle')
+      MiniButton({
+        'data-no-drag': 'true',
+        disabled: reason ? true : undefined,
+        title: reason || 'Draw a card',
+        onclick: drawOne
+      }, 'Draw'),
+      MiniButton({
+        'data-no-drag': 'true',
+        disabled: roomCommandUnavailable() ? true : undefined,
+        onclick: shuffleDrawPile
+      }, 'Shuffle')
     )
   )
-)
+})
 
 const discardObject = s(() => {
   const top = state.discardPile[state.discardPile.length - 1]
@@ -1654,6 +1541,59 @@ const presenceLayer = s(() =>
       )
     })
 )
+
+const remoteHands = s(() =>
+  RemoteHandsLayer(
+    remoteHandSeats().map(({ seat, position }) => remoteHandZone({
+      key: seat.playerId,
+      seat,
+      position
+    }))
+  )
+)
+
+function remoteHandSeats() {
+  const seats = seatsForDisplay()
+  const occupied = seats.filter(seat => seat.clientId)
+  const mine = localSeat()
+  const others = mine ? seatsAfter(mine.playerId, seats).filter(seat => seat.clientId) : occupied
+  const positions = handPositionsForCount(others.length)
+
+  return others.slice(0, positions.length).map((seat, index) => ({
+    seat,
+    position: positions[index]
+  }))
+}
+
+function seatsAfter(playerId, seats) {
+  const index = seats.findIndex(seat => seat.playerId === playerId)
+  if (index < 0) return seats
+  return [...seats.slice(index + 1), ...seats.slice(0, index)]
+}
+
+function handPositionsForCount(count) {
+  if (count <= 0) return []
+  if (count === 1) return ['top']
+  if (count === 2) return ['left', 'right']
+  return ['left', 'top', 'right']
+}
+
+const remoteHandZone = s(({ seat, position }) => {
+  const count = handCountForPlayer(seat.playerId)
+  const visibleBacks = Math.min(count, 7)
+
+  return RemoteHandZone({
+    'data-position': position
+  },
+    RemoteHandLabel({
+      style: `--seat-color: ${seat.color}`
+    }, seat.clientName || seat.playerName),
+    RemoteHandCards(
+      Array.from({ length: visibleBacks }, (_, index) => RemoteHandBack({ key: `${seat.playerId}-${index}` })),
+      count > visibleBacks ? Pill(`+${count - visibleBacks}`) : null
+    )
+  )
+})
 
 const compactCard = s(({ card, selected = false, onpointerdown }) =>
   DeckStack`
@@ -1718,27 +1658,29 @@ const sidePanel = s(() =>
   )
 )
 
-const handBar = s(() =>
-  HandBar({
-    'data-drop-zone': ZONE.HAND
-  },
+const handBar = s(() => {
+  const seat = localSeat()
+  const cards = localHandCards()
+  const selected = selectedHandCard()
+
+  return HandBar(
     HandStatus(
       TitleBlock(
-        Title('Player Hand'),
-        Subtitle(selectedHandCard() ? `${selectedHandCard().code} selected` : 'No card selected')
+        Title(seat ? `${seat.clientName || localPlayerName} Hand` : 'Spectator Hand'),
+        Subtitle(selected
+          ? `${selected.code} selected`
+          : seat
+            ? state.started ? `${cards.length} cards` : `${seat.playerName} seat waiting`
+            : 'Join a seat before start')
       )
     ),
     HandCards({
       'data-hand-cards': 'true'
     },
-      state.hand.map((card, index) => handCard({ key: card.id, card, index, total: state.hand.length }))
-    ),
-    ActionRail(
-      ToolbarButton({ onclick: drawOne }, 'Draw'),
-      SecondaryButton({ onclick: shuffleDrawPile }, 'Shuffle')
+      cards.map((card, index) => handCard({ key: card.id, card, index, total: cards.length }))
     )
   )
-)
+})
 
 const handCard = s(({ card, index, total }) => {
   const metrics = handMetrics()
@@ -1758,6 +1700,7 @@ const handCard = s(({ card, index, total }) => {
     --card-lift ${-lift + 'px'}
     transform translateY(var(--card-lift)) rotate(${rotate + 'deg'})
   `({
+    'data-hand-card': 'true',
     selected: state.selectedHandCardId === card.id,
     'data-dragging': dragState?.type === CARD_DRAG_TYPE.HAND && dragState.cardId === card.id && dragState.moved ? 'true' : 'false',
     onpointerdown: event => startHandCardDrag(event, card)

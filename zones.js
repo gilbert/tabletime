@@ -40,10 +40,7 @@ export const ZONES = Object.freeze({
   },
   [ZONE.HAND]: {
     id: ZONE.HAND,
-    acceptsCards: {
-      [CARD_DRAG_TYPE.DISCARD]: { action: CARD_DROP_ACTION.MOVE_TO_HAND },
-      [CARD_DRAG_TYPE.TABLE]: { action: CARD_DROP_ACTION.MOVE_TO_HAND }
-    }
+    acceptsCards: {}
   }
 })
 

@@ -786,9 +786,14 @@ export const HandCardButton = s`button
   background var(--paper)
   color var(--ink)
   box-shadow 0 14px 28px rgba(0,0,0,.3)
-  cursor pointer
+  cursor grab
+  touch-action none
   transform-origin 50% 140%
   transition transform 140ms, box-shadow 140ms
+
+  &:active {
+    cursor grabbing
+  }
 
   &:hover {
     transform translateY(calc(var(--card-lift) - 18px)) rotate(var(--card-rotate))
@@ -848,4 +853,91 @@ export const ActionRail = s`div
     gap 6px
     flex-direction column
   }
+`
+
+export const RemoteHandsLayer = s`div
+  position absolute
+  inset 0
+  z-index 4
+  pointer-events none
+`
+
+export const RemoteHandZone = s`section
+  position absolute
+  display grid
+  justify-items center
+  gap 8px
+  min-width 190px
+  padding 8px
+
+  &[data-position="top"] {
+    left 50%
+    top 20px
+    transform translateX(-50%)
+  }
+
+  &[data-position="left"] {
+    left 24px
+    top 50%
+    transform translateY(-50%)
+  }
+
+  &[data-position="right"] {
+    right 24px
+    top 50%
+    transform translateY(-50%)
+  }
+`
+
+export const RemoteHandLabel = s`div
+  display inline-flex
+  align-items center
+  gap 7px
+  max-width 190px
+  min-height 28px
+  padding 0 9px
+  border 1px solid rgba(255,255,255,.14)
+  border-radius 7px
+  background rgba(22,25,29,.72)
+  color #f5f1e8
+  font-size 12px
+  font-weight 750
+  box-shadow 0 8px 20px rgba(0,0,0,.22)
+  white-space nowrap
+  overflow hidden
+  text-overflow ellipsis
+
+  &::before {
+    content ''
+    width 9px
+    height 9px
+    border-radius 50%
+    background var(--seat-color)
+    box-shadow 0 0 0 2px rgba(255,255,255,.18)
+    flex 0 0 auto
+  }
+`
+
+export const RemoteHandCards = s`div
+  display flex
+  justify-content center
+  align-items center
+  min-height 72px
+  padding-left 18px
+`
+
+export const RemoteHandBack = s`div
+  display grid
+  place-items center
+  width 48px
+  height 68px
+  margin-left -18px
+  border 1px solid rgba(255,255,255,.18)
+  border-radius 7px
+  background
+    linear-gradient(45deg, rgba(255,255,255,.12) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255,255,255,.12) 25%, transparent 25%),
+    #29313a
+  background-size 14px 14px
+  box-shadow 0 8px 18px rgba(0,0,0,.3)
 `

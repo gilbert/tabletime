@@ -2,7 +2,9 @@ import { BOARD_SIZE, HAND_SIZE } from '../constants.js'
 
 export const players = [
   { id: 'red', name: 'Red', color: '#c73538' },
-  { id: 'blue', name: 'Blue', color: '#2267b8' }
+  { id: 'blue', name: 'Blue', color: '#2267b8' },
+  { id: 'green', name: 'Green', color: '#2f855a' },
+  { id: 'gold', name: 'Gold', color: '#b7791f' }
 ]
 
 export const gameConfigs = Object.freeze({
@@ -19,9 +21,7 @@ export const gameConfigs = Object.freeze({
         'deck.draw',
         'deck.shuffle',
         'card.handToDiscard',
-        'card.discardToHand',
         'card.discardToTable',
-        'card.tableToHand',
         'card.tableToDiscard',
         'card.flip',
         'card.rotate',
@@ -81,7 +81,7 @@ export function createInitialGameState({ random = Math.random, gameId = 'sequenc
     selectedChipId: null,
     drawPile: [],
     discardPile: [],
-    hand: [],
+    handsByPlayerId: {},
     chips: [],
     tableCards: [],
     objects: initialObjects(),
@@ -90,11 +90,6 @@ export function createInitialGameState({ random = Math.random, gameId = 'sequenc
   }
 
   state.drawPile = shuffle(makeDeck(state, 2), random)
-
-  for (let i = 0; i < HAND_SIZE; i++) {
-    const card = state.drawPile.pop()
-    if (card) state.hand.push(card)
-  }
 
   return state
 }
@@ -178,7 +173,43 @@ export function shuffle(cards, random = Math.random) {
 }
 
 export function cloneGameState(state) {
-  return JSON.parse(JSON.stringify(state))
+  return normalizeGameState(JSON.parse(JSON.stringify(state)))
+}
+
+export function normalizeGameState(state) {
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return state
+
+  if (!state.handsByPlayerId || typeof state.handsByPlayerId !== 'object' || Array.isArray(state.handsByPlayerId)) {
+    state.handsByPlayerId = {}
+  }
+
+  if (Array.isArray(state.hand) && state.hand.length) {
+    state.drawPile = [...(state.drawPile || []), ...state.hand]
+  }
+  delete state.hand
+
+  for (const [playerId, hand] of Object.entries(state.handsByPlayerId)) {
+    if (Array.isArray(hand)) {
+      state.handsByPlayerId[playerId] = hand.slice(0, HAND_SIZE)
+      continue
+    }
+
+    if (hand && typeof hand === 'object') {
+      state.handsByPlayerId[playerId] = {
+        playerId: hand.playerId || playerId,
+        playerName: hand.playerName || null,
+        clientName: hand.clientName || null,
+        color: hand.color || null,
+        count: Math.max(0, Number(hand.count) || 0),
+        hidden: hand.hidden !== false
+      }
+      continue
+    }
+
+    delete state.handsByPlayerId[playerId]
+  }
+
+  return state
 }
 
 function cloneLogConfig(logConfig) {

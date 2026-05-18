@@ -11,7 +11,7 @@ import {
   TABLE_WIDTH
 } from '../constants.js'
 import { cardDropRule, CARD_DRAG_TYPE, CARD_DROP_ACTION, ZONE } from '../zones.js'
-import { cloneGameState, createInitialGameState, players, shuffle } from './setup.js'
+import { cloneGameState, createInitialGameState, normalizeGameState, players, shuffle } from './setup.js'
 
 export const COMMAND = Object.freeze({
   RESET: 'game.reset',
@@ -40,6 +40,7 @@ export const COMMAND = Object.freeze({
 
 export function applyCommand(state, command, { random = Math.random, actor = null } = {}) {
   if (!command?.type) return reject('Unknown command.')
+  normalizeGameState(state)
 
   const result = applyCommandMutation(state, command, { random, actor })
   if (result.ok && result.message && shouldLogCommand(state, command.type)) addLog(state, result.message)
@@ -66,7 +67,7 @@ function applyCommandMutation(state, command, { random, actor }) {
       return switchPlayer(state, command.payload)
 
     case COMMAND.DRAW:
-      return drawToHand(state, command.payload?.count || 1, random)
+      return drawToActorHand(state, command.payload?.count || 1, random, actor)
 
     case COMMAND.SHUFFLE_DRAW:
       state.drawPile = shuffle(state.drawPile, random)
@@ -91,7 +92,7 @@ function applyCommandMutation(state, command, { random, actor }) {
       return returnChip(state, command.payload)
 
     case COMMAND.CARD_HAND_TO_DISCARD:
-      return handCardToDiscard(state, command.payload)
+      return handCardToDiscard(state, command.payload, actor)
 
     case COMMAND.CARD_DISCARD_TO_HAND:
       return discardCardToHand(state, command.payload)
@@ -147,13 +148,24 @@ function switchPlayer(state, payload = {}) {
 
 function startGame(state) {
   ensureSeats(state)
+  ensureHands(state)
   if (state.started) return reject('Game is already started.')
-  const occupiedSeatCount = state.seats.filter(seat => seat.clientId).length
+  const occupiedSeats = state.seats.filter(seat => seat.clientId)
+  const occupiedSeatCount = occupiedSeats.length
   const minPlayersToStart = state.minPlayersToStart || 1
   if (occupiedSeatCount < minPlayersToStart) {
     return reject(`At least ${minPlayersToStart} players must be seated to start.`)
   }
 
+  state.handsByPlayerId = Object.fromEntries(occupiedSeats.map(seat => [seat.playerId, []]))
+  for (let cardIndex = 0; cardIndex < HAND_SIZE; cardIndex++) {
+    for (const seat of occupiedSeats) {
+      const card = state.drawPile.pop()
+      if (card) state.handsByPlayerId[seat.playerId].push(card)
+    }
+  }
+
+  state.activePlayerId = occupiedSeats[0]?.playerId || state.activePlayerId
   state.started = true
   return accept('Game started.')
 }
@@ -205,31 +217,43 @@ function leaveSeat(state, payload = {}, actor = null) {
   return accept(`${clientName} left ${seat.playerName}.`)
 }
 
-function drawToHand(state, count, random) {
-  let drawn = 0
+function drawToActorHand(state, count, random, actor) {
+  ensureSeats(state)
+  ensureHands(state)
+  if (!state.started) return reject('Start the game before drawing.')
+  if (!actor?.clientId) return reject('Connection identity is required to draw.')
 
-  for (let i = 0; i < count; i++) {
-    if (state.hand.length >= HAND_SIZE) {
+  const seat = state.seats.find(item => item.clientId === actor.clientId)
+  if (!seat) return reject('Join a seat before drawing.')
+
+  const hand = state.handsByPlayerId[seat.playerId]
+  if (!Array.isArray(hand)) return reject('Hand not found for this seat.')
+
+  let drawn = 0
+  const limit = Math.max(1, Number(count) || 1)
+
+  for (let i = 0; i < limit; i++) {
+    if (hand.length >= HAND_SIZE) {
       return drawn
-        ? accept(`Drew ${drawn} card${drawn === 1 ? '' : 's'}.`)
+        ? accept(`${seat.clientName || actor.playerName || seat.playerName} drew ${drawn} card${drawn === 1 ? '' : 's'}.`)
         : reject('Hand is full.')
     }
 
     if (!state.drawPile.length) recycleDiscard(state, random)
     if (!state.drawPile.length) {
       return drawn
-        ? accept(`Drew ${drawn} card${drawn === 1 ? '' : 's'}.`)
+        ? accept(`${seat.clientName || actor.playerName || seat.playerName} drew ${drawn} card${drawn === 1 ? '' : 's'}.`)
         : reject('Draw deck is empty.')
     }
 
     const card = state.drawPile.pop()
     if (card) {
-      state.hand.push(card)
+      hand.push(card)
       drawn++
     }
   }
 
-  return accept(`Drew ${drawn} card${drawn === 1 ? '' : 's'}.`)
+  return accept(`${seat.clientName || actor.playerName || seat.playerName} drew ${drawn} card${drawn === 1 ? '' : 's'}.`)
 }
 
 function recycleDiscard(state, random) {
@@ -299,29 +323,30 @@ function returnChip(state, payload = {}) {
   return accept('Chip returned to supply.')
 }
 
-function handCardToDiscard(state, payload = {}) {
+function handCardToDiscard(state, payload = {}, actor = null) {
+  ensureSeats(state)
+  ensureHands(state)
   const rule = cardDropRule(payload.zoneId || ZONE.DISCARD, CARD_DRAG_TYPE.HAND)
   if (rule?.action !== CARD_DROP_ACTION.MOVE_TO_DISCARD) return reject('Discard does not accept that card.')
+  if (!state.started) return reject('Start the game before playing a card.')
+  if (!actor?.clientId) return reject('Connection identity is required to play a card.')
 
-  const card = state.hand.find(item => item.id === payload.cardId)
-  if (!card) return reject('Card not found in hand.')
+  const seat = state.seats.find(item => item.clientId === actor.clientId)
+  if (!seat) return reject('Join a seat before playing a card.')
 
-  state.hand = state.hand.filter(item => item.id !== card.id)
+  const hand = state.handsByPlayerId[seat.playerId]
+  if (!Array.isArray(hand)) return reject('Hand not found for this seat.')
+
+  const card = hand.find(item => item.id === payload.cardId)
+  if (!card) return reject('Card not found in your hand.')
+
+  state.handsByPlayerId[seat.playerId] = hand.filter(item => item.id !== card.id)
   state.discardPile.push({ ...card, faceUp: rule.cardFaceUpOnDrop ?? true })
-  return accept(`${card.code} moved to discard.`)
+  return accept(`${seat.clientName || actor.playerName || seat.playerName} moved a card to discard.`)
 }
 
 function discardCardToHand(state, payload = {}) {
-  const rule = cardDropRule(payload.zoneId || ZONE.HAND, CARD_DRAG_TYPE.DISCARD)
-  if (rule?.action !== CARD_DROP_ACTION.MOVE_TO_HAND) return reject('Hand does not accept that card.')
-
-  const card = topDiscardCard(state)
-  if (!card || card.id !== payload.cardId) return reject('Only the top discard card can be moved.')
-  if (state.hand.length >= HAND_SIZE) return reject('Hand is full.')
-
-  state.discardPile.pop()
-  state.hand.push(card)
-  return accept(`${card.code} moved from discard to hand.`)
+  return reject('Discard cards cannot be moved into hands.')
 }
 
 function discardCardToTable(state, payload = {}) {
@@ -339,17 +364,7 @@ function discardCardToTable(state, payload = {}) {
 }
 
 function tableCardToHand(state, payload = {}) {
-  const rule = cardDropRule(payload.zoneId || ZONE.HAND, CARD_DRAG_TYPE.TABLE)
-  if (rule?.action !== CARD_DROP_ACTION.MOVE_TO_HAND) return reject('Hand does not accept that card.')
-
-  const piece = tableCardById(state, payload.pieceId)
-  if (!piece) return reject('Table card not found.')
-  if (piece.locked) return reject('Card is locked.')
-  if (state.hand.length >= HAND_SIZE) return reject('Hand is full.')
-
-  state.tableCards = state.tableCards.filter(item => item.id !== piece.id)
-  state.hand.push(piece.card)
-  return accept(`${piece.card.code} moved from table to hand.`)
+  return reject('Table cards cannot be moved into hands.')
 }
 
 function tableCardToDiscard(state, payload = {}) {
@@ -476,6 +491,12 @@ function ensureSeats(state) {
       clientName: null
     })
   }
+
+  ensureHands(state)
+}
+
+function ensureHands(state) {
+  normalizeGameState(state)
 }
 
 function ensureLogConfig(state) {
@@ -489,9 +510,7 @@ function ensureLogConfig(state) {
         COMMAND.DRAW,
         COMMAND.SHUFFLE_DRAW,
         COMMAND.CARD_HAND_TO_DISCARD,
-        COMMAND.CARD_DISCARD_TO_HAND,
         COMMAND.CARD_DISCARD_TO_TABLE,
-        COMMAND.CARD_TABLE_TO_HAND,
         COMMAND.CARD_TABLE_TO_DISCARD,
         COMMAND.CARD_FLIP,
         COMMAND.CARD_ROTATE,

@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 
 import { applyCommand } from '../game/commands.js'
-import { cloneGameState, createInitialGameState, players } from '../game/setup.js'
+import { cloneGameState, createInitialGameState, normalizeGameState, players } from '../game/setup.js'
 
 const rooms = new Map()
 
@@ -199,8 +199,32 @@ function broadcastPresence(room, client, presence) {
   }
 }
 
-function snapshotForClient(room) {
-  return cloneGameState(room.state)
+function snapshotForClient(room, client = null) {
+  normalizeGameState(room.state)
+  const snapshot = cloneGameState(room.state)
+  const seat = client ? clientSeat(room, client) : null
+  const visibleHands = {}
+
+  for (const occupiedSeat of occupiedSeats(room.state)) {
+    const hand = Array.isArray(room.state.handsByPlayerId?.[occupiedSeat.playerId])
+      ? room.state.handsByPlayerId[occupiedSeat.playerId]
+      : []
+
+    visibleHands[occupiedSeat.playerId] = seat?.playerId === occupiedSeat.playerId
+      ? cloneGameState(hand)
+      : {
+        playerId: occupiedSeat.playerId,
+        playerName: occupiedSeat.playerName,
+        clientName: occupiedSeat.clientName,
+        color: occupiedSeat.color,
+        count: hand.length,
+        hidden: true
+      }
+  }
+
+  snapshot.handsByPlayerId = visibleHands
+  delete snapshot.hand
+  return snapshot
 }
 
 function send(ws, message) {
@@ -218,6 +242,10 @@ function clientPresenceColor(room, client) {
 
 function clientSeat(room, client) {
   return room.state.seats?.find(seat => seat.clientId === client.id) || null
+}
+
+function occupiedSeats(state) {
+  return (state.seats || []).filter(seat => seat.clientId)
 }
 
 function roomHasClient(room, clientId) {
