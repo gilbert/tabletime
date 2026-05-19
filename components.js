@@ -343,7 +343,7 @@ export const CardRank = s`strong
 `
 
 export const CardSuit = s`span
-  font-size 12px
+  font-size 14px
   line-height 1
   font-weight 800
 `
@@ -416,15 +416,17 @@ export const TableCardButton = s`button
 `
 
 export const CardBack = s`div
+  position relative
   display grid
   place-items center
   width 100%
   height 100%
   border-radius 7px
-  background
+  overflow hidden
+  background-color #29313a
+  background-image
     linear-gradient(45deg, rgba(255,255,255,.12) 25%, transparent 25%),
-    linear-gradient(-45deg, rgba(255,255,255,.12) 25%, transparent 25%),
-    #29313a
+    linear-gradient(-45deg, rgba(255,255,255,.12) 25%, transparent 25%)
   background-size 18px 18px
   color #f5f1e8
   font-size 13px
@@ -563,6 +565,32 @@ export const DiscardBody = s`div
   &[data-drop-ready="true"] {
     background rgba(241,210,138,.12)
     box-shadow inset 0 0 0 2px rgba(241,210,138,.7)
+  }
+`
+
+export const DiscardCardButton = s`button
+  display grid
+  width ${CARD_PORTRAIT_WIDTH + 'px'}
+  height ${CARD_PORTRAIT_HEIGHT + 'px'}
+  border 1px solid rgba(37,42,49,.22)
+  border-radius 8px
+  background var(--paper)
+  color var(--ink)
+  box-shadow 0 14px 28px rgba(0,0,0,.3)
+  cursor grab
+  touch-action none
+
+  &:active {
+    cursor grabbing
+  }
+
+  &:hover {
+    box-shadow 0 22px 38px rgba(0,0,0,.38)
+  }
+
+  &[selected] {
+    outline 3px solid #f1d28a
+    outline-offset 3px
   }
 `
 
@@ -756,9 +784,21 @@ export const HandStatus = s`div
   position absolute
   left 18px
   top 16px
-  display grid
-  gap 7px
   width 205px
+`
+
+export const HandIdentity = s`div
+  display grid
+  grid-template-columns auto minmax(0, 1fr)
+  align-items start
+  gap 9px
+`
+
+export const HandSeatSwatch = SeatSwatch`
+  width 16px
+  height 16px
+  margin-top 1px
+  box-shadow 0 0 0 2px rgba(255,255,255,.22), 0 6px 14px rgba(0,0,0,.22)
 `
 
 export const HandCards = s`div
@@ -927,17 +967,34 @@ export const RemoteHandCards = s`div
 `
 
 export const RemoteHandBack = s`div
+  position relative
   display grid
   place-items center
   width 48px
   height 68px
   margin-left -18px
-  border 1px solid rgba(255,255,255,.18)
+  overflow hidden
+  border 1px solid rgba(255,255,255,.34)
   border-radius 7px
-  background
-    linear-gradient(45deg, rgba(255,255,255,.12) 25%, transparent 25%),
-    linear-gradient(-45deg, rgba(255,255,255,.12) 25%, transparent 25%),
-    #29313a
+  background-color #29313a
+  background-image
+    linear-gradient(45deg, rgba(255,255,255,.16) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255,255,255,.16) 25%, transparent 25%)
   background-size 14px 14px
-  box-shadow 0 8px 18px rgba(0,0,0,.3)
+  box-shadow 0 8px 18px rgba(0,0,0,.38), inset 0 0 0 2px rgba(255,255,255,.08)
+
+  &::after {
+    content 'TABLETIME'
+    position absolute
+    inset 12px 8px
+    display grid
+    place-items center
+    border 1px solid rgba(255,255,255,.16)
+    border-radius 5px
+    color rgba(245,241,232,.86)
+    font-size 8px
+    font-weight 850
+    letter-spacing 0
+    background rgba(12,16,20,.18)
+  }
 `

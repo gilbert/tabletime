@@ -32,6 +32,7 @@ import {
   CornerText,
   DeckBody,
   DeckStack,
+  DiscardCardButton,
   DiscardBody,
   FreeCorner,
   FormError,
@@ -40,6 +41,8 @@ import {
   HandCardButton,
   HandCardInner,
   HandCards,
+  HandIdentity,
+  HandSeatSwatch,
   HandStatus,
   LockBadge,
   LogItem,
@@ -131,6 +134,15 @@ function activePlayer() {
 
 function suitMeta(suitId) {
   return suits.find(suit => suit.id === suitId) || suits[0]
+}
+
+function suitGlyph(suitId) {
+  const suit = suitMeta(suitId)
+  return suit.symbol || suit.id
+}
+
+function cardLabel(card) {
+  return `${card.rank}${suitGlyph(card.suit)}`
 }
 
 function objectById(id) {
@@ -891,7 +903,7 @@ function finishHandCardDrop(event, drag) {
     return
   }
 
-  addLog(`${card.code} returned to hand.`)
+  addLog(`${cardLabel(card)} returned to hand.`)
   returnDragGhostToOrigin(drag)
 }
 
@@ -927,7 +939,7 @@ function finishDiscardCardDrop(event, drag) {
     return
   }
 
-  addLog(`${card.code} returned to discard.`)
+  addLog(`${cardLabel(card)} returned to discard.`)
   returnDragGhostToOrigin(drag)
 }
 
@@ -1416,7 +1428,7 @@ const boardSpace = s(({ space }) => {
       ? FreeCorner('FREE')
       : CardFace(
         CardRank({ style: `color: ${suitMeta(space.suit).color}` }, space.rank),
-        CardSuit({ style: `color: ${suitMeta(space.suit).color}` }, space.suit)
+        CardSuit({ style: `color: ${suitMeta(space.suit).color}` }, suitGlyph(space.suit))
       )
   )
 })
@@ -1589,21 +1601,18 @@ const remoteHandZone = s(({ seat, position }) => {
       style: `--seat-color: ${seat.color}`
     }, seat.clientName || seat.playerName),
     RemoteHandCards(
-      Array.from({ length: visibleBacks }, (_, index) => RemoteHandBack({ key: `${seat.playerId}-${index}` })),
+      Array.from({ length: visibleBacks }, (_, index) => RemoteHandBack({
+        key: `${seat.playerId}-${index}`,
+        'data-remote-hand-back': 'true'
+      })),
       count > visibleBacks ? Pill(`+${count - visibleBacks}`) : null
     )
   )
 })
 
 const compactCard = s(({ card, selected = false, onpointerdown }) =>
-  DeckStack`
-    background var(--paper)
-    color var(--ink)
-    box-shadow 0 10px 24px rgba(0,0,0,.28)
-    cursor grab
-    outline ${selected ? '3px solid #f1d28a' : '0 solid transparent'}
-    outline-offset 3px
-  `({
+  DiscardCardButton({
+    selected,
     onpointerdown
   },
     cardVisual({ card, faceUp: card.faceUp !== false })
@@ -1612,9 +1621,10 @@ const compactCard = s(({ card, selected = false, onpointerdown }) =>
 
 const cardVisual = s(({ card, faceUp = true }) =>
   faceUp
-    ? CardFace(
-      CardRank({ style: `color: ${suitMeta(card.suit).color}` }, card.rank),
-      CardSuit({ style: `color: ${suitMeta(card.suit).color}` }, card.suit)
+    ? HandCardInner(
+      CornerText({ style: `color: ${suitMeta(card.suit).color}` }, card.rank, CardSuit(suitGlyph(card.suit))),
+      CenterRank({ style: `color: ${suitMeta(card.suit).color}` }, card.rank),
+      BottomText({ style: `color: ${suitMeta(card.suit).color}` }, card.rank, CardSuit(suitGlyph(card.suit)))
     )
     : CardBack('TABLETIME')
 )
@@ -1665,13 +1675,16 @@ const handBar = s(() => {
 
   return HandBar(
     HandStatus(
-      TitleBlock(
-        Title(seat ? `${seat.clientName || localPlayerName} Hand` : 'Spectator Hand'),
-        Subtitle(selected
-          ? `${selected.code} selected`
-          : seat
-            ? state.started ? `${cards.length} cards` : `${seat.playerName} seat waiting`
-            : 'Join a seat before start')
+      HandIdentity(
+        seat ? HandSeatSwatch({ style: `--seat-color: ${seat.color}` }) : null,
+        TitleBlock(
+          Title(seat ? `${seat.clientName || localPlayerName} Hand` : 'Spectator Hand'),
+          Subtitle(selected
+            ? `${cardLabel(selected)} selected`
+            : seat
+              ? state.started ? `${cards.length} cards` : `${seat.playerName} seat waiting`
+              : 'Join a seat before start')
+        )
       )
     ),
     HandCards({
@@ -1706,9 +1719,9 @@ const handCard = s(({ card, index, total }) => {
     onpointerdown: event => startHandCardDrag(event, card)
   },
     HandCardInner(
-      CornerText({ style: `color: ${suitMeta(card.suit).color}` }, card.rank, CardSuit(card.suit)),
+      CornerText({ style: `color: ${suitMeta(card.suit).color}` }, card.rank, CardSuit(suitGlyph(card.suit))),
       CenterRank({ style: `color: ${suitMeta(card.suit).color}` }, card.rank),
-      BottomText({ style: `color: ${suitMeta(card.suit).color}` }, card.rank, CardSuit(card.suit))
+      BottomText({ style: `color: ${suitMeta(card.suit).color}` }, card.rank, CardSuit(suitGlyph(card.suit)))
     )
   )
 })

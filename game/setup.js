@@ -48,10 +48,10 @@ export const gameConfigs = Object.freeze({
 })
 
 export const suits = [
-  { id: 'S', name: 'Spades', color: '#1f2937' },
-  { id: 'H', name: 'Hearts', color: '#c73538' },
-  { id: 'D', name: 'Diamonds', color: '#c73538' },
-  { id: 'C', name: 'Clubs', color: '#1f2937' }
+  { id: 'S', name: 'Spades', symbol: '♠', color: '#1f2937' },
+  { id: 'H', name: 'Hearts', symbol: '♥', color: '#c73538' },
+  { id: 'D', name: 'Diamonds', symbol: '♦', color: '#c73538' },
+  { id: 'C', name: 'Clubs', symbol: '♣', color: '#1f2937' }
 ]
 
 export const ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']

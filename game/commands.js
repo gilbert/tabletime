@@ -11,7 +11,7 @@ import {
   TABLE_WIDTH
 } from '../constants.js'
 import { cardDropRule, CARD_DRAG_TYPE, CARD_DROP_ACTION, ZONE } from '../zones.js'
-import { cloneGameState, createInitialGameState, normalizeGameState, players, shuffle } from './setup.js'
+import { cloneGameState, createInitialGameState, normalizeGameState, players, shuffle, suits } from './setup.js'
 
 export const COMMAND = Object.freeze({
   RESET: 'game.reset',
@@ -112,19 +112,19 @@ function applyCommandMutation(state, command, { random, actor }) {
     case COMMAND.CARD_FLIP:
       return updateTableCard(state, command.payload?.pieceId, piece => {
         piece.faceUp = !piece.faceUp
-        return `${piece.card.code} flipped ${piece.faceUp ? 'face-up' : 'face-down'}.`
+        return `${cardLabel(piece.card)} flipped ${piece.faceUp ? 'face-up' : 'face-down'}.`
       })
 
     case COMMAND.CARD_ROTATE:
       return updateTableCard(state, command.payload?.pieceId, piece => {
         piece.orientation = piece.orientation === 'landscape' ? 'portrait' : 'landscape'
-        return `${piece.card.code} rotated ${piece.orientation}.`
+        return `${cardLabel(piece.card)} rotated ${piece.orientation}.`
       })
 
     case COMMAND.CARD_LOCK:
       return updateTableCard(state, command.payload?.pieceId, piece => {
         piece.locked = !piece.locked
-        return `${piece.card.code} ${piece.locked ? 'locked' : 'unlocked'}.`
+        return `${cardLabel(piece.card)} ${piece.locked ? 'locked' : 'unlocked'}.`
       })
 
     default:
@@ -342,7 +342,12 @@ function handCardToDiscard(state, payload = {}, actor = null) {
 
   state.handsByPlayerId[seat.playerId] = hand.filter(item => item.id !== card.id)
   state.discardPile.push({ ...card, faceUp: rule.cardFaceUpOnDrop ?? true })
-  return accept(`${seat.clientName || actor.playerName || seat.playerName} moved a card to discard.`)
+  return accept(`${seat.clientName || actor.playerName || seat.playerName} moved ${cardLabel(card)} to discard.`)
+}
+
+function cardLabel(card) {
+  const suit = suits.find(item => item.id === card?.suit)
+  return `${card?.rank || ''}${suit?.symbol || card?.suit || ''}`
 }
 
 function discardCardToHand(state, payload = {}) {
@@ -360,7 +365,7 @@ function discardCardToTable(state, payload = {}) {
 
   state.discardPile.pop()
   state.tableCards.push(makeTableCardPiece(card, payload))
-  return accept(`${card.code} moved from discard to table.`)
+  return accept(`${cardLabel(card)} moved from discard to table.`)
 }
 
 function tableCardToHand(state, payload = {}) {
@@ -377,7 +382,7 @@ function tableCardToDiscard(state, payload = {}) {
 
   state.tableCards = state.tableCards.filter(item => item.id !== piece.id)
   state.discardPile.push({ ...piece.card, faceUp: rule.cardFaceUpOnDrop ?? true })
-  return accept(`${piece.card.code} moved from table to discard.`)
+  return accept(`${cardLabel(piece.card)} moved from table to discard.`)
 }
 
 function moveTableCard(state, payload = {}) {
@@ -389,7 +394,7 @@ function moveTableCard(state, payload = {}) {
   const position = clampPiecePosition(payload.x, payload.y, payload.width || size.width, payload.height || size.height)
   piece.x = position.x
   piece.y = position.y
-  return accept(`${piece.card.code} moved.`)
+  return accept(`${cardLabel(piece.card)} moved.`)
 }
 
 function updateTableCard(state, pieceId, update) {
