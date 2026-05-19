@@ -95,7 +95,7 @@ function applyCommandMutation(state, command, { random, actor }) {
       return handCardToDiscard(state, command.payload, actor)
 
     case COMMAND.CARD_DISCARD_TO_HAND:
-      return discardCardToHand(state, command.payload)
+      return discardCardToHand(state, command.payload, actor)
 
     case COMMAND.CARD_DISCARD_TO_TABLE:
       return discardCardToTable(state, command.payload)
@@ -350,8 +350,29 @@ function cardLabel(card) {
   return `${card?.rank || ''}${suit?.symbol || card?.suit || ''}`
 }
 
-function discardCardToHand(state, payload = {}) {
-  return reject('Discard cards cannot be moved into hands.')
+function discardCardToHand(state, payload = {}, actor = null) {
+  ensureSeats(state)
+  ensureHands(state)
+  const rule = cardDropRule(payload.zoneId || ZONE.HAND, CARD_DRAG_TYPE.DISCARD)
+  if (rule?.action !== CARD_DROP_ACTION.MOVE_TO_HAND) return reject('Hand does not accept that card.')
+  if (!state.started) return reject('Start the game before taking a card.')
+  if (!actor?.clientId) return reject('Connection identity is required to take a card.')
+
+  const seat = state.seats.find(item => item.clientId === actor.clientId)
+  if (!seat) return reject('Join a seat before taking a card.')
+
+  const hand = state.handsByPlayerId[seat.playerId]
+  if (!Array.isArray(hand)) return reject('Hand not found for this seat.')
+  if (hand.length >= HAND_SIZE) return reject('Hand is full.')
+
+  const card = topDiscardCard(state)
+  if (!card || card.id !== payload.cardId) return reject('Only the top discard card can be moved.')
+
+  const handCard = { ...card }
+  delete handCard.faceUp
+  state.discardPile.pop()
+  hand.push(handCard)
+  return accept(`${seat.clientName || actor.playerName || seat.playerName} took ${cardLabel(card)} from discard.`)
 }
 
 function discardCardToTable(state, payload = {}) {

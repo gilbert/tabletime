@@ -21,6 +21,7 @@ export const gameConfigs = Object.freeze({
         'deck.draw',
         'deck.shuffle',
         'card.handToDiscard',
+        'card.discardToHand',
         'card.discardToTable',
         'card.tableToDiscard',
         'card.flip',

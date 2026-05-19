@@ -123,7 +123,8 @@ const SERVER_AUTHORITATIVE_COMMANDS = new Set([
   COMMAND.SEAT_LEAVE,
   COMMAND.DRAW,
   COMMAND.SHUFFLE_DRAW,
-  COMMAND.CARD_HAND_TO_DISCARD
+  COMMAND.CARD_HAND_TO_DISCARD,
+  COMMAND.CARD_DISCARD_TO_HAND
 ])
 
 const state = createInitialGameState()
@@ -914,6 +915,22 @@ function finishDiscardCardDrop(event, drag) {
 
   const rule = cardDropRule(zoneId, drag.type)
 
+  if (rule?.action === CARD_DROP_ACTION.MOVE_TO_HAND) {
+    const result = submitCommand(createCommand(COMMAND.CARD_DISCARD_TO_HAND, {
+      cardId: card.id,
+      zoneId
+    }))
+    if (!result.ok) {
+      returnDragGhostToOrigin(drag)
+      return
+    }
+
+    state.selectedDiscardCardId = null
+    state.selectedHandCardId = card.id
+    removeDragGhost()
+    return
+  }
+
   if (rule?.action === CARD_DROP_ACTION.PLACE_ON_TABLE) {
     const point = tablePointFromEvent(event)
     if (!point) return
@@ -1673,7 +1690,10 @@ const handBar = s(() => {
   const cards = localHandCards()
   const selected = selectedHandCard()
 
-  return HandBar(
+  return HandBar({
+    'data-drop-zone': ZONE.HAND,
+    'data-drop-ready': zoneAcceptsCardDrop(ZONE.HAND, dragState?.type) ? 'true' : 'false'
+  },
     HandStatus(
       HandIdentity(
         seat ? HandSeatSwatch({ style: `--seat-color: ${seat.color}` }) : null,
