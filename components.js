@@ -998,3 +998,23 @@ export const RemoteHandBack = s`div
     background rgba(12,16,20,.18)
   }
 `
+
+export const RemoteHandDragCard = s`div
+  position absolute
+  z-index 65
+  display grid
+  border 1px solid rgba(255,255,255,.34)
+  border-radius 8px
+  background #29313a
+  box-shadow 0 24px 44px rgba(0,0,0,.42), 0 0 0 3px color-mix(in srgb, var(--presence-color) 46%, transparent)
+  pointer-events none
+  overflow hidden
+  opacity .96
+  transition left 45ms linear, top 45ms linear
+  will-change left, top
+
+  &[data-returning="true"] {
+    opacity .9
+    transition left 190ms cubic-bezier(.2,.8,.2,1), top 190ms cubic-bezier(.2,.8,.2,1), opacity 190ms
+  }
+`

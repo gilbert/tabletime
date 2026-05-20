@@ -62,6 +62,7 @@ import {
   Pill,
   PanelActions,
   PresenceCursor,
+  RemoteHandDragCard,
   RemoteHandBack,
   RemoteHandCards,
   RemoteHandLabel,
@@ -550,7 +551,7 @@ function currentSelection() {
 
 function dragPresence() {
   if (!dragState) return null
-  if (dragState.returning) return null
+  if (dragState.returning && dragState.type !== CARD_DRAG_TYPE.HAND) return null
 
   const base = {
     offsetX: dragState.offsetX,
@@ -567,6 +568,10 @@ function dragPresence() {
   if (dragState.type === CARD_DRAG_TYPE.TABLE) {
     const piece = tableCardById(dragState.pieceId)
     return { ...base, kind: 'table-card', id: dragState.pieceId, x: piece?.x, y: piece?.y }
+  }
+
+  if (dragState.type === CARD_DRAG_TYPE.HAND) {
+    return { ...base, kind: 'hand-card', returning: dragState.returning ? true : undefined }
   }
 
   if (dragState.type === CARD_DRAG_TYPE.DISCARD) return { kind: 'discard-card', id: dragState.cardId }
@@ -668,6 +673,8 @@ function attachPointerListeners() {
   window.addEventListener('pointerup', event => {
     if (!dragState) return
     const currentDrag = dragState
+    const pointer = tablePointFromEvent(event)
+    if (pointer) lastPointer = pointer
 
     if (currentDrag.type === 'object') {
       const object = objectById(currentDrag.objectId)
@@ -1095,6 +1102,7 @@ function returnDragGhostToOrigin(drag) {
   }
 
   drag.returning = true
+  if (drag.type === CARD_DRAG_TYPE.HAND) sendPresence(lastPointer, { force: true })
   const current = dragGhost.getBoundingClientRect()
 
   dragGhost.animate([
@@ -1344,6 +1352,7 @@ const App = s(({}, [], { doc }) => {
           remoteHands(),
           state.tableCards.map(piece => tableCard({ key: piece.id, piece })),
           state.chips.map(chip => tableChip({ key: chip.id, chip })),
+          remoteHandDrags(),
           presenceLayer()
         )
       )
@@ -1609,23 +1618,98 @@ function handPositionsForCount(count) {
 
 const remoteHandZone = s(({ seat, position }) => {
   const count = handCountForPlayer(seat.playerId)
-  const visibleBacks = Math.min(count, 7)
+  const displayCount = remoteHandDragForPlayer(seat.playerId) ? Math.max(0, count - 1) : count
+  const visibleBacks = Math.min(displayCount, 7)
 
   return RemoteHandZone({
-    'data-position': position
+    'data-position': position,
+    'data-remote-hand-player-id': seat.playerId
   },
     RemoteHandLabel({
       style: `--seat-color: ${seat.color}`
     }, seat.clientName || seat.playerName),
-    RemoteHandCards(
+    RemoteHandCards({
+      'data-remote-hand-cards': 'true'
+    },
       Array.from({ length: visibleBacks }, (_, index) => RemoteHandBack({
         key: `${seat.playerId}-${index}`,
         'data-remote-hand-back': 'true'
       })),
-      count > visibleBacks ? Pill(`+${count - visibleBacks}`) : null
+      displayCount > visibleBacks ? Pill(`+${displayCount - visibleBacks}`) : null
     )
   )
 })
+
+const remoteHandDrags = s(() =>
+  remoteHandDragPresences().map(presence => {
+    const drag = presence.drag
+    const position = remoteHandDragPosition(presence)
+    if (!position) return null
+
+    return RemoteHandDragCard`
+      left ${position.x + 'px'}
+      top ${position.y + 'px'}
+      width ${(drag.width || CARD_PORTRAIT_WIDTH) + 'px'}
+      height ${(drag.height || CARD_PORTRAIT_HEIGHT) + 'px'}
+      --presence-color ${presence.color || seatForClient(presence.clientId)?.color || '#f1d28a'}
+    `({
+      key: presence.clientId,
+      'data-returning': drag.returning ? 'true' : 'false'
+    },
+      CardBack('TABLETIME')
+    )
+  })
+)
+
+function remoteHandDragPresences() {
+  const now = Date.now()
+
+  return Array.from(remotePresence.values()).filter(presence =>
+    presence.pointer &&
+    presence.drag?.kind === 'hand-card' &&
+    seatForClient(presence.clientId) &&
+    now - presence.updatedAt <= 1500
+  )
+}
+
+function remoteHandDragForPlayer(playerId) {
+  return remoteHandDragPresences().find(presence => presence.playerId === playerId)
+}
+
+function remoteHandDragPosition(presence) {
+  const drag = presence.drag
+  const current = {
+    x: presence.pointer.x - (drag.offsetX || 0),
+    y: presence.pointer.y - (drag.offsetY || 0)
+  }
+
+  if (!drag.returning) return current
+
+  return remoteHandReturnPosition(presence, drag) || current
+}
+
+function remoteHandReturnPosition(presence, drag) {
+  const seat = seatForClient(presence.clientId)
+  if (!seat) return null
+
+  const surface = document.querySelector('[data-table-surface="true"]')
+  const zone = Array.from(document.querySelectorAll('[data-remote-hand-player-id]'))
+    .find(element => element.dataset.remoteHandPlayerId === seat.playerId)
+  if (!surface || !zone) return null
+
+  const target = zone.querySelector('[data-remote-hand-back]') ||
+    zone.querySelector('[data-remote-hand-cards]') ||
+    zone
+  const surfaceRect = surface.getBoundingClientRect()
+  const targetRect = target.getBoundingClientRect()
+  const width = drag.width || CARD_PORTRAIT_WIDTH
+  const height = drag.height || CARD_PORTRAIT_HEIGHT
+
+  return {
+    x: targetRect.left - surfaceRect.left + (targetRect.width - width) / 2,
+    y: targetRect.top - surfaceRect.top + (targetRect.height - height) / 2
+  }
+}
 
 const compactCard = s(({ card, selected = false, onpointerdown }) =>
   DiscardCardButton({
@@ -1656,13 +1740,17 @@ const sidePanel = s(() =>
       ),
       SeatList(
         seatsForDisplay().map(seat =>
-          SeatRow({ key: seat.playerId },
+          SeatRow({
+            key: seat.playerId,
+            'data-seat-row': seat.playerId
+          },
             SeatSwatch({ style: `--seat-color: ${seat.color}` }),
             SeatText(
               SeatName(seat.playerName),
               SeatOccupant(seat.clientName || 'Open')
             ),
             MiniButton({
+              'data-seat-action': seat.playerId,
               disabled: roomCommandUnavailable() || state.started || (seat.clientId && seat.clientId !== localClientId) ? true : undefined,
               onclick: () => handleSeatAction(seat)
             }, seatActionLabel(seat))

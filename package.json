@@ -6,10 +6,14 @@
   "scripts": {
     "build": "cofound build",
     "generate": "cofound generate",
+    "test": "node tests/index.js",
     "start": "cofound start",
     "dev": "cofound dev"
   },
   "dependencies": {
     "cofound": "file:/Users/rabbit-m2/p/cofound/pkg"
+  },
+  "devDependencies": {
+    "happy-dom": "^20.9.0"
   }
 }

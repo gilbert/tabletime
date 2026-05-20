@@ -58,6 +58,10 @@ Suggested event examples:
 
 Realtime sync can start with WebSockets and an in-memory room store, then move to persistence once game save/load is needed. Presence events should be ephemeral and throttled; game commands should be ordered and replayable.
 
+## Regression Testing
+
+New user-facing features should include Happy DOM regression coverage when they can be exercised without real browser geometry. Prefer server-backed Happy DOM tests for seat state, snapshots, command flow, privacy, and non-geometric UI behavior. Keep drag/drop geometry, pointer hit testing, and visual animation checks in real-browser tests.
+
 ## Sequence Reference Slice
 
 The first implemented slice uses Sequence-like data:
