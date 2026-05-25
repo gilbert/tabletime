@@ -1,13 +1,7 @@
 import { HAND_SIZE } from '../constants.js'
-import { blokusGame } from '../games/blokus.js'
-import { players, ranks, sequenceGame, sequenceSpaces, suits } from '../games/sequence.js'
+import { gameConfigs, players, ranks, sequenceSpaces, suits } from '../games/index.js'
 
-export { players, sequenceSpaces, suits }
-
-export const gameConfigs = Object.freeze({
-  sequence: sequenceGame,
-  blokus: blokusGame
-})
+export { gameConfigs, players, sequenceSpaces, suits }
 
 export function getGameConfig(gameId = 'sequence') {
   return gameConfigs[gameId] || gameConfigs.sequence

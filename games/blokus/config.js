@@ -113,8 +113,7 @@ export function initialObjects() {
   return [
     {
       id: 'blokus-board',
-      type: 'board',
-      boardKind: 'blokus',
+      type: 'blokus/board',
       title: 'Blokus Board',
       x: 560,
       y: 105,

@@ -18,14 +18,9 @@ import {
   AuthField,
   AuthOverlay,
   AuthPanel,
-  BoardCell,
-  BoardGrid,
-  BoardWrap,
   BottomText,
   Brand,
   CardBack,
-  CardFace,
-  CardRank,
   CardSuit,
   CenterRank,
   CornerText,
@@ -33,7 +28,6 @@ import {
   DeckStack,
   DiscardCardButton,
   DiscardBody,
-  FreeCorner,
   FormError,
   FormNote,
   HandBar,
@@ -96,8 +90,10 @@ import {
   autoscrollLog,
   installGlobalStyles
 } from './components.js'
+import './games/register-components.js'
 import { applyCommand, applySnapshot, COMMAND, createCommand } from './game/commands.js'
-import { createInitialGameState, gameConfigs, getGameConfig, players, sequenceSpaces, suits } from './game/setup.js'
+import { createInitialGameState, gameConfigs, getGameConfig, players, suits } from './game/setup.js'
+import { getObjectComponent } from './games/components.js'
 import { createMultiplayerClient } from './network.js'
 import { CARD_DRAG_TYPE, CARD_DROP_ACTION, ZONE, cardDropRule, zoneAcceptsCardDrop } from './zones.js'
 
@@ -1835,57 +1831,17 @@ const tableObject = s(({ object }) => {
       object.title,
       LockBadge(object.locked ? 'locked' : 'movable')
     ),
-    object.type === 'board' && boardObject({ object }),
-    object.type === 'deck' && deckObject(),
-    object.type === 'discard' && discardObject(),
-    object.type === 'supply' && supplyObject()
+    tableObjectContent({ object })
   )
 })
 
-const boardObject = s(({ object }) =>
-  object.boardKind === 'blokus' ? blokusBoard() : sequenceBoard()
-)
+const tableObjectContent = s(({ object }) => {
+  if (object.type === 'deck') return deckObject()
+  if (object.type === 'discard') return discardObject()
+  if (object.type === 'supply') return supplyObject()
 
-const sequenceBoard = s(() =>
-  BoardWrap({
-    'data-drop-zone': ZONE.BOARD,
-    style: `--board-size: 10; --cell-size: 72px; --board-gap: 4px`
-  },
-    BoardGrid(
-      sequenceSpaces.map(space => boardSpace({ key: space.id, space }))
-    )
-  )
-)
-
-const boardSpace = s(({ space }) => {
-  return BoardCell({
-    'data-free': space.free
-  },
-    space.free
-      ? FreeCorner('FREE')
-      : CardFace(
-        CardRank({ style: `color: ${suitMeta(space.suit).color}` }, space.rank),
-        CardSuit({ style: `color: ${suitMeta(space.suit).color}` }, suitGlyph(space.suit))
-      )
-  )
-})
-
-const blokusBoard = s(() => {
-  const size = state.board?.size || 20
-  const cellSize = state.board?.cellSize || 26
-  const cornerIndexes = new Set([0, size - 1, size * (size - 1), size * size - 1])
-
-  return BoardWrap({
-    style: `--board-size: ${size}; --cell-size: ${cellSize}px; --board-gap: 2px`
-  },
-    BoardGrid(
-      Array.from({ length: size * size }, (_, index) => BoardCell({
-        key: `blokus-${index}`,
-        'data-board-kind': 'blokus',
-        'data-corner': cornerIndexes.has(index) ? 'true' : 'false'
-      }))
-    )
-  )
+  const customObjectComponent = getObjectComponent(object.type)
+  return customObjectComponent ? customObjectComponent({ state, object }) : null
 })
 
 const tableChip = s(({ chip }) => {

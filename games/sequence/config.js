@@ -1,4 +1,4 @@
-import { BOARD_SIZE } from '../constants.js'
+import { BOARD_SIZE } from '../../constants.js'
 
 export const players = [
   { id: 'red', name: 'Red', color: '#c73538' },
@@ -66,8 +66,7 @@ export function initialObjects() {
   return [
     {
       id: 'sequence-board',
-      type: 'board',
-      boardKind: 'sequence',
+      type: 'sequence/board',
       title: 'Sequence Board',
       x: 410,
       y: 150,

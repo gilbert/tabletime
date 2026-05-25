@@ -1,4 +1,5 @@
 import t from 'cofound/test'
+import { readFileSync } from 'node:fs'
 
 import {
   CARD_LANDSCAPE_HEIGHT,
@@ -42,6 +43,25 @@ t`card dimensions use the playing-card ratio`(() => {
   assert(CARD_LANDSCAPE_WIDTH * 5 === CARD_LANDSCAPE_HEIGHT * 7, 'Landscape cards should be 7:5.')
 })
 
+t`game object types use scoped component keys`(() => {
+  const sequence = createInitialGameState()
+  const blokus = createInitialGameState({ gameId: 'blokus' })
+
+  assert(sequence.objects.some(object => object.type === 'sequence/board'), 'Sequence should use the sequence/board object type.')
+  assert(blokus.objects.some(object => object.type === 'blokus/board'), 'Blokus should use the blokus/board object type.')
+  assert(sequence.objects.every(object => object.boardKind === undefined), 'Sequence objects should not use boardKind.')
+  assert(blokus.objects.every(object => object.boardKind === undefined), 'Blokus objects should not use boardKind.')
+})
+
+t`index delegates game object rendering through the component registry`(() => {
+  const source = readFileSync(new URL('../index.js', import.meta.url), 'utf8')
+
+  assert(!source.includes('boardKind'), 'index.js should not branch on boardKind.')
+  assert(!source.includes('sequenceBoard'), 'Sequence board rendering should live in the game component module.')
+  assert(!source.includes('blokusBoard'), 'Blokus board rendering should live in the game component module.')
+  assert(source.includes('getObjectComponent'), 'index.js should render custom objects through the registry.')
+})
+
 t`blokus setup disables hands and creates polyomino supplies`(() => {
   const state = createInitialGameState({ gameId: 'blokus' })
   const alice = { clientId: 'alice-client', playerName: 'alice' }
@@ -51,7 +71,7 @@ t`blokus setup disables hands and creates polyomino supplies`(() => {
   assert(state.features.hands === false, 'Blokus should disable hands.')
   assert(state.drawPile.length === 0, 'Blokus should not create a draw pile.')
   assert(state.discardPile.length === 0, 'Blokus should not create a discard pile.')
-  assert(state.objects.length === 1 && state.objects[0].boardKind === 'blokus', 'Blokus should create a Blokus board.')
+  assert(state.objects.length === 1 && state.objects[0].type === 'blokus/board', 'Blokus should create a Blokus board.')
   assert(state.pieces.length === 84, 'Blokus should create 21 polyominoes for each of 4 players.')
   assert(state.pieces.every(piece => piece.inSupply === false && Number.isFinite(piece.x) && Number.isFinite(piece.y)), 'Blokus pieces should start on the table.')
   assert(state.pieces.some(piece => piece.rotation > 0), 'Blokus layout should support initial piece rotation.')
