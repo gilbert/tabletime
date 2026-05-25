@@ -38,6 +38,23 @@ export const COMMAND = Object.freeze({
   CARD_LOCK: 'card.lock'
 })
 
+const COMPONENT_COMMANDS_REQUIRING_SEAT = new Set([
+  COMMAND.SHUFFLE_DRAW,
+  COMMAND.OBJECT_MOVE,
+  COMMAND.OBJECT_LOCK,
+  COMMAND.CHIP_CREATE,
+  COMMAND.CHIP_MOVE,
+  COMMAND.CHIP_LOCK,
+  COMMAND.CHIP_RETURN,
+  COMMAND.CARD_DISCARD_TO_TABLE,
+  COMMAND.CARD_TABLE_TO_HAND,
+  COMMAND.CARD_TABLE_TO_DISCARD,
+  COMMAND.CARD_TABLE_MOVE,
+  COMMAND.CARD_FLIP,
+  COMMAND.CARD_ROTATE,
+  COMMAND.CARD_LOCK
+])
+
 export function applyCommand(state, command, { random = Math.random, actor = null } = {}) {
   if (!command?.type) return reject('Unknown command.')
   normalizeGameState(state)
@@ -48,6 +65,11 @@ export function applyCommand(state, command, { random = Math.random, actor = nul
 }
 
 function applyCommandMutation(state, command, { random, actor }) {
+  if (COMPONENT_COMMANDS_REQUIRING_SEAT.has(command.type)) {
+    const blocked = rejectUnseatedComponentActor(state, actor)
+    if (blocked) return blocked
+  }
+
   switch (command.type) {
     case COMMAND.RESET:
       replaceState(state, createInitialGameState({ random, gameId: state.gameId }))
@@ -130,6 +152,15 @@ function applyCommandMutation(state, command, { random, actor }) {
     default:
       return reject(`Unsupported command: ${command.type}`)
   }
+}
+
+function rejectUnseatedComponentActor(state, actor) {
+  ensureSeats(state)
+  if (!actor?.clientId) return reject('Connection identity is required to manipulate components.')
+  if (!state.seats.some(seat => seat.clientId === actor.clientId)) {
+    return reject('Join a seat before manipulating components.')
+  }
+  return null
 }
 
 export function createCommand(type, payload = {}) {

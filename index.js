@@ -91,6 +91,7 @@ import {
   ToolbarButton,
   TopBar,
   Workspace,
+  autoscrollLog,
   installGlobalStyles
 } from './components.js'
 import { applyCommand, applySnapshot, COMMAND, createCommand } from './game/commands.js'
@@ -117,6 +118,8 @@ let localEntityCounter = 1
 let lastPresenceSent = 0
 let lastPointer = null
 const remotePresence = new Map()
+const drawAnimatingCardIds = new Set()
+const DRAW_ANIMATION_MS = 340
 const SERVER_AUTHORITATIVE_COMMANDS = new Set([
   COMMAND.RESET,
   COMMAND.START,
@@ -229,6 +232,16 @@ function roomCommandUnavailable() {
   return Boolean(multiplayer && !multiplayer.connected)
 }
 
+function canManipulateComponents() {
+  return Boolean(localSeat())
+}
+
+function manipulationUnavailableReason() {
+  if (!canManipulateComponents()) return 'Join a seat before manipulating components.'
+  if (roomCommandUnavailable()) return 'Waiting for room connection.'
+  return ''
+}
+
 function seatActionLabel(seat) {
   if (seat.clientId === localClientId) return '(you)'
   if (seat.clientId) return 'Taken'
@@ -236,10 +249,12 @@ function seatActionLabel(seat) {
 }
 
 function drawOne() {
+  if (drawUnavailableReason()) return
   submitCommand(createCommand(COMMAND.DRAW, { count: 1 }))
 }
 
 function shuffleDrawPile() {
+  if (manipulationUnavailableReason()) return
   submitCommand(createCommand(COMMAND.SHUFFLE_DRAW))
 }
 
@@ -358,7 +373,9 @@ function submitCommand(command) {
   return result
 }
 
-function applyAuthoritativeSnapshot(snapshot) {
+function applyAuthoritativeSnapshot(snapshot, message = {}) {
+  const previousSeat = localSeat()
+  const previousHandIds = new Set(previousSeat ? localHandCards().map(card => card.id) : [])
   const selection = {
     selectedHandCardId: state.selectedHandCardId,
     selectedTableCardId: state.selectedTableCardId,
@@ -370,7 +387,166 @@ function applyAuthoritativeSnapshot(snapshot) {
   Object.assign(state, selection)
   pruneMissingSelections()
   pruneUnseatedPresence()
+  const currentSeat = localSeat()
+  const addedLocalCards = previousSeat && currentSeat?.playerId === previousSeat.playerId && isDrawSnapshotMessage(message)
+    ? localHandCards().filter(card => !previousHandIds.has(card.id))
+    : []
+  const addedLocalCardIds = addedLocalCards.map(card => card.id)
+  for (const cardId of addedLocalCardIds) drawAnimatingCardIds.add(cardId)
   scheduleRedraw()
+  if (addedLocalCardIds.length) queueDrawAnimations(addedLocalCardIds)
+}
+
+function isDrawSnapshotMessage(message) {
+  return /\bdrew \d+ cards?\./.test(message?.message || '')
+}
+
+function queueDrawAnimations(cardIds) {
+  if (s.is.server || !cardIds.length) return
+
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => startDrawAnimations(cardIds))
+  })
+}
+
+function startDrawAnimations(cardIds) {
+  const source = document.querySelector('[data-draw-stack="true"]')
+  if (!source) return
+
+  const sourceRect = animationSourceRect(source)
+  let startedAny = false
+
+  for (const cardId of cardIds) {
+    if (activeDrawAnimationForCard(cardId)) continue
+    const target = findHandCardElement(cardId)
+    if (!target) continue
+
+    startedAny = true
+    drawAnimatingCardIds.add(cardId)
+    animateDrawCard({
+      cardId,
+      startRect: cardSizedRectAtCenter(sourceRect, target),
+      endRect: animationTargetRect(target)
+    })
+  }
+
+  if (!startedAny) {
+    for (const cardId of cardIds) drawAnimatingCardIds.delete(cardId)
+    scheduleRedraw()
+  }
+}
+
+function findHandCardElement(cardId) {
+  return Array.from(document.querySelectorAll('[data-hand-card-id]'))
+    .find(element => element.dataset.handCardId === cardId)
+}
+
+function activeDrawAnimationForCard(cardId) {
+  return Array.from(document.querySelectorAll('[data-draw-card-animation="true"]'))
+    .some(element => element.dataset.cardId === cardId)
+}
+
+function animationSourceRect(source) {
+  return rectFromDomRect(source.getBoundingClientRect())
+}
+
+function animationTargetRect(target) {
+  const targetRect = rectFromDomRect(target.getBoundingClientRect())
+  return centeredRect(targetRect, cardAnimationSize(target))
+}
+
+function cardSizedRectAtCenter(sourceRect, target) {
+  return centeredRect(sourceRect, cardAnimationSize(target))
+}
+
+function cardAnimationSize(target) {
+  return {
+    width: target.offsetWidth || CARD_PORTRAIT_WIDTH,
+    height: target.offsetHeight || CARD_PORTRAIT_HEIGHT
+  }
+}
+
+function centeredRect(rect, size) {
+  return {
+    left: rect.left + rect.width / 2 - size.width / 2,
+    top: rect.top + rect.height / 2 - size.height / 2,
+    width: size.width,
+    height: size.height
+  }
+}
+
+function animateDrawCard({ cardId, startRect, endRect }) {
+  const element = createDrawAnimationElement(cardId, startRect)
+  document.body.append(element)
+
+  const finish = () => {
+    element.remove()
+    drawAnimatingCardIds.delete(cardId)
+    scheduleRedraw()
+  }
+
+  if (typeof element.animate === 'function') {
+    const animation = element.animate([
+      drawAnimationFrame(startRect, .92),
+      drawAnimationFrame(endRect, .98)
+    ], {
+      duration: DRAW_ANIMATION_MS,
+      easing: 'cubic-bezier(.2,.8,.2,1)',
+      fill: 'forwards'
+    })
+    if (animation.finished) {
+      animation.finished.then(finish, finish)
+    } else {
+      window.setTimeout(finish, DRAW_ANIMATION_MS + 40)
+    }
+    return
+  }
+
+  window.requestAnimationFrame(() => {
+    element.style.transition = `left ${DRAW_ANIMATION_MS}ms cubic-bezier(.2,.8,.2,1), top ${DRAW_ANIMATION_MS}ms cubic-bezier(.2,.8,.2,1), width ${DRAW_ANIMATION_MS}ms cubic-bezier(.2,.8,.2,1), height ${DRAW_ANIMATION_MS}ms cubic-bezier(.2,.8,.2,1), opacity ${DRAW_ANIMATION_MS}ms`
+    Object.assign(element.style, drawAnimationFrame(endRect, .98))
+    window.setTimeout(finish, DRAW_ANIMATION_MS + 40)
+  })
+}
+
+function createDrawAnimationElement(cardId, rect) {
+  const element = document.createElement('div')
+  element.dataset.drawCardAnimation = 'true'
+  element.dataset.cardId = cardId
+  Object.assign(element.style, {
+    ...drawAnimationFrame(rect, .92),
+    position: 'fixed',
+    zIndex: '180',
+    display: 'grid',
+    pointerEvents: 'none',
+    border: '1px solid rgba(255,255,255,.34)',
+    borderRadius: '8px',
+    overflow: 'hidden',
+    boxShadow: '0 24px 44px rgba(0,0,0,.4)'
+  })
+
+  const back = document.createElement('div')
+  Object.assign(back.style, {
+    width: '100%',
+    height: '100%',
+    borderRadius: '7px',
+    backgroundColor: '#223c4c',
+    backgroundImage: "url('/tabletime-playing-card-back.png')",
+    backgroundSize: 'cover',
+    backgroundPosition: 'center'
+  })
+  element.append(back)
+  return element
+}
+
+function drawAnimationFrame(rect, opacity) {
+  return {
+    left: `${rect.left}px`,
+    top: `${rect.top}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+    opacity: `${opacity}`
+  }
 }
 
 function pruneMissingSelections() {
@@ -722,6 +898,7 @@ function attachPointerListeners() {
 }
 
 function startObjectDrag(event, object) {
+  if (!canManipulateComponents()) return
   if (object.locked || event.target.closest('[data-no-drag="true"]')) return
 
   event.preventDefault()
@@ -744,6 +921,7 @@ function startObjectDrag(event, object) {
 }
 
 function startChipDrag(event, chip) {
+  if (!canManipulateComponents()) return
   event.preventDefault()
   event.stopPropagation()
   selectChip(chip.id)
@@ -771,6 +949,7 @@ function startChipDrag(event, chip) {
 }
 
 function createChipFromSupply(event, playerId) {
+  if (!canManipulateComponents()) return
   event.preventDefault()
   event.stopPropagation()
 
@@ -837,6 +1016,7 @@ function startHandCardDrag(event, card) {
 }
 
 function startDiscardCardDrag(event, card) {
+  if (!canManipulateComponents()) return
   event.preventDefault()
   event.stopPropagation()
 
@@ -862,6 +1042,7 @@ function startDiscardCardDrag(event, card) {
 }
 
 function startTableCardDrag(event, piece) {
+  if (!canManipulateComponents()) return
   event.preventDefault()
   event.stopPropagation()
   selectTableCard(piece.id)
@@ -1282,6 +1463,8 @@ function handleKeyDown(event) {
   if (isTypingTarget(event.target)) return
 
   const key = event.key.toLowerCase()
+  if (!canManipulateComponents() && ['f', 'r', 'l', 'backspace'].includes(key)) return
+
   const piece = selectedTableCard()
 
   if (key === 'f' && piece) {
@@ -1411,6 +1594,7 @@ const loginOverlay = s(() =>
 const tableObject = s(({ object }) => {
   const localDragging = dragState?.type === 'object' && dragState.objectId === object.id
   const remoteDragging = isRemoteDragging('object', object.id)
+  const canManipulate = canManipulateComponents()
 
   return TableObjectShell`
     left ${objectLeft(object) + 'px'}
@@ -1422,7 +1606,7 @@ const tableObject = s(({ object }) => {
     'data-drop-zone': object.type === 'discard' ? ZONE.DISCARD : undefined
   },
     ObjectHeader`
-      cursor ${object.locked ? 'default' : localDragging ? 'grabbing' : 'grab'}
+      cursor ${object.locked || !canManipulate ? 'default' : localDragging ? 'grabbing' : 'grab'}
     `({
       onpointerdown: event => startObjectDrag(event, object)
     },
@@ -1462,6 +1646,7 @@ const boardSpace = s(({ space }) => {
 const tableChip = s(({ chip }) => {
   const localDragging = dragState?.type === 'chip' && dragState.chipId === chip.id
   const remoteDragging = isRemoteDragging('chip', chip.id)
+  const canManipulate = canManipulateComponents()
 
   return TableChip`
     position ${localDragging ? 'fixed' : 'absolute'}
@@ -1474,7 +1659,8 @@ const tableChip = s(({ chip }) => {
     'aria-label': `${playerById(chip.playerId).name} chip`,
     'data-dragging': localDragging || remoteDragging ? 'true' : 'false',
     'data-selected': state.selectedChipId === chip.id ? 'true' : 'false',
-    'data-locked': chip.locked ? 'true' : 'false',
+    'data-locked': chip.locked || !canManipulate ? 'true' : 'false',
+    disabled: !canManipulate ? true : undefined,
     onpointerdown: event => startChipDrag(event, chip)
   })
 })
@@ -1483,6 +1669,7 @@ const tableCard = s(({ piece }) => {
   const size = cardPieceSize(piece)
   const localDragging = dragState?.type === CARD_DRAG_TYPE.TABLE && dragState.pieceId === piece.id
   const remoteDragging = isRemoteDragging('table-card', piece.id)
+  const canManipulate = canManipulateComponents()
 
   return TableCardButton`
     position ${localDragging ? 'fixed' : 'absolute'}
@@ -1498,7 +1685,8 @@ const tableCard = s(({ piece }) => {
     'data-piece-id': piece.id,
     'data-dragging': localDragging || remoteDragging ? 'true' : 'false',
     'data-selected': state.selectedTableCardId === piece.id ? 'true' : 'false',
-    'data-locked': piece.locked ? 'true' : 'false',
+    'data-locked': piece.locked || !canManipulate ? 'true' : 'false',
+    disabled: !canManipulate ? true : undefined,
     onpointerdown: event => startTableCardDrag(event, piece)
   },
     cardVisual({ card: piece.card, faceUp: piece.faceUp })
@@ -1507,6 +1695,7 @@ const tableCard = s(({ piece }) => {
 
 const deckObject = s(() => {
   const reason = drawUnavailableReason()
+  const shuffleReason = manipulationUnavailableReason()
 
   return DeckBody(
     DeckStack({
@@ -1523,7 +1712,8 @@ const deckObject = s(() => {
       }, 'Draw'),
       MiniButton({
         'data-no-drag': 'true',
-        disabled: roomCommandUnavailable() ? true : undefined,
+        disabled: shuffleReason ? true : undefined,
+        title: shuffleReason || 'Shuffle draw deck',
         onclick: shuffleDrawPile
       }, 'Shuffle')
     )
@@ -1540,6 +1730,7 @@ const discardObject = s(() => {
     top ? compactCard({
       card: top,
       selected: state.selectedDiscardCardId === top.id,
+      disabled: !canManipulateComponents(),
       onpointerdown: event => startDiscardCardDrag(event, top)
     }) : DeckStack`background rgba(255,255,255,.05); box-shadow none`('Empty'),
     Pill(`${state.discardPile.length} discarded`)
@@ -1554,6 +1745,7 @@ const supplyObject = s(() =>
         'data-no-drag': 'true'
       },
         SupplyChip({
+          'data-disabled': !canManipulateComponents() ? 'true' : 'false',
           style: `background: ${player.color}`,
           onpointerdown: event => createChipFromSupply(event, player.id)
         }),
@@ -1656,7 +1848,7 @@ const remoteHandDrags = s(() =>
       key: presence.clientId,
       'data-returning': drag.returning ? 'true' : 'false'
     },
-      CardBack('TABLETIME')
+      CardBack()
     )
   })
 )
@@ -1711,9 +1903,10 @@ function remoteHandReturnPosition(presence, drag) {
   }
 }
 
-const compactCard = s(({ card, selected = false, onpointerdown }) =>
+const compactCard = s(({ card, selected = false, disabled = false, onpointerdown }) =>
   DiscardCardButton({
     selected,
+    disabled: disabled ? true : undefined,
     onpointerdown
   },
     cardVisual({ card, faceUp: card.faceUp !== false })
@@ -1727,7 +1920,7 @@ const cardVisual = s(({ card, faceUp = true }) =>
       CenterRank({ style: `color: ${suitMeta(card.suit).color}` }, card.rank),
       BottomText({ style: `color: ${suitMeta(card.suit).color}` }, card.rank, CardSuit(suitGlyph(card.suit)))
     )
-    : CardBack('TABLETIME')
+    : CardBack()
 )
 
 const sidePanel = s(() =>
@@ -1766,7 +1959,9 @@ const sidePanel = s(() =>
     ),
     LogPanelSection(
       PanelTitle('Log'),
-      LogList(
+      LogList({
+        dom: autoscrollLog
+      },
         state.log.map((item, index) => LogItem({ key: `${index}-${item}` }, item))
       )
     )
@@ -1822,8 +2017,10 @@ const handCard = s(({ card, index, total }) => {
     transform translateY(var(--card-lift)) rotate(${rotate + 'deg'})
   `({
     'data-hand-card': 'true',
+    'data-hand-card-id': card.id,
     selected: state.selectedHandCardId === card.id,
     'data-dragging': dragState?.type === CARD_DRAG_TYPE.HAND && dragState.cardId === card.id && dragState.moved ? 'true' : 'false',
+    'data-entering-draw': drawAnimatingCardIds.has(card.id) ? 'true' : 'false',
     onpointerdown: event => startHandCardDrag(event, card)
   },
     HandCardInner(
@@ -1837,8 +2034,8 @@ const handCard = s(({ card, index, total }) => {
 function handMetrics() {
   const width = s.is.server ? 1200 : window.innerWidth
 
-  if (width < 560) return { width: 62, height: 88, spacing: 34, arcLift: 14, fanDegrees: 20 }
-  if (width < 820) return { width: 88, height: 122, spacing: 55, arcLift: 20, fanDegrees: 24 }
+  if (width < 560) return { width: 62, height: 86.8, spacing: 34, arcLift: 14, fanDegrees: 20 }
+  if (width < 820) return { width: 88, height: 123.2, spacing: 55, arcLift: 20, fanDegrees: 24 }
   return { width: CARD_PORTRAIT_WIDTH, height: CARD_PORTRAIT_HEIGHT, spacing: 74, arcLift: 26, fanDegrees: 26 }
 }
 

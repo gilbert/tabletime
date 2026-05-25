@@ -93,7 +93,8 @@ function bindWindow(window) {
     'Node',
     'NodeFilter',
     'DocumentFragment',
-    'customElements'
+    'customElements',
+    'MutationObserver'
   ]) {
     if (key in window) expose(key, window[key])
   }
@@ -219,6 +220,11 @@ function enabledSeatActions(client) {
     .map(button => button.dataset.seatAction)
 }
 
+function buttonByLabel(client, label) {
+  return Array.from(client.document.querySelectorAll('button'))
+    .find(item => text(item.textContent) === label)
+}
+
 function handCardCount(client) {
   return client.document.querySelectorAll('[data-hand-card="true"]').length
 }
@@ -305,6 +311,8 @@ t`server-backed happy-dom UI`({
 
       await waitFor(charlie, () => text(charlie.document.body.textContent).includes('Started'))
       assert(enabledSeatActions(charlie).length === 0, 'Unseated late clients should not have enabled seat actions.')
+      assert(buttonByLabel(charlie, 'Draw')?.disabled, 'Unseated late clients should not be able to draw.')
+      assert(buttonByLabel(charlie, 'Shuffle')?.disabled, 'Unseated late clients should not be able to shuffle.')
     } finally {
       await alice.close()
       await bob.close()

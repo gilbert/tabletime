@@ -9,4 +9,5 @@ globalThis.cofounddev = {
   }
 }
 
+await import('./commands.test.js')
 await import('./ui.test.js')

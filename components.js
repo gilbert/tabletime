@@ -378,6 +378,11 @@ export const TableChip = s`button
     cursor default
     filter saturate(.75)
   }
+
+  &:disabled {
+    cursor default
+    filter saturate(.75)
+  }
 `
 
 export const TableCardButton = s`button
@@ -410,6 +415,11 @@ export const TableCardButton = s`button
     filter saturate(.7)
   }
 
+  &:disabled {
+    cursor default
+    filter saturate(.7)
+  }
+
   &[data-dragging="true"] {
     z-index 60
   }
@@ -423,14 +433,12 @@ export const CardBack = s`div
   height 100%
   border-radius 7px
   overflow hidden
-  background-color #29313a
-  background-image
-    linear-gradient(45deg, rgba(255,255,255,.12) 25%, transparent 25%),
-    linear-gradient(-45deg, rgba(255,255,255,.12) 25%, transparent 25%)
-  background-size 18px 18px
-  color #f5f1e8
-  font-size 13px
-  font-weight 850
+  background-color #223c4c
+  background-image url('/tabletime-playing-card-back.png')
+  background-size cover
+  background-position center
+  color transparent
+  font-size 0
 `
 
 export const FreeCorner = s`span
@@ -457,7 +465,7 @@ export const DeckStack = s`div
   display grid
   place-items center
   width 112px
-  height 152px
+  height 156.8px
   margin 0 auto
   border-radius 7px
   background #29313a
@@ -588,6 +596,10 @@ export const DiscardCardButton = s`button
     box-shadow 0 22px 38px rgba(0,0,0,.38)
   }
 
+  &:disabled {
+    cursor default
+  }
+
   &[selected] {
     outline 3px solid #f1d28a
     outline-offset 3px
@@ -625,6 +637,11 @@ export const SupplyChip = s`span
   box-shadow 0 3px 8px rgba(0,0,0,.3), inset 0 -4px 6px rgba(0,0,0,.2), inset 0 4px 6px rgba(255,255,255,.18)
   cursor grab
   touch-action none
+
+  &[data-disabled="true"] {
+    cursor default
+    filter saturate(.75)
+  }
 `
 
 export const SidePanel = s`aside
@@ -764,6 +781,20 @@ export const LogList = s`ol
   scrollbar-width thin
 `
 
+export function autoscrollLog(dom) {
+  const scrollToBottom = () => {
+    dom.scrollTop = dom.scrollHeight
+  }
+  scrollToBottom()
+
+  const Observer = globalThis.MutationObserver
+  if (!Observer) return undefined
+
+  const observer = new Observer(scrollToBottom)
+  observer.observe(dom, { childList: true, subtree: true })
+  return () => observer.disconnect()
+}
+
 export const LogItem = s`li
   color #cdd5dd
   font-size 12px
@@ -848,6 +879,10 @@ export const HandCardButton = s`button
 
   &[data-dragging="true"] {
     opacity .28
+  }
+
+  &[data-entering-draw="true"] {
+    opacity 0
   }
 `
 
@@ -971,32 +1006,16 @@ export const RemoteHandBack = s`div
   display grid
   place-items center
   width 48px
-  height 68px
+  height 67.2px
   margin-left -18px
   overflow hidden
   border 1px solid rgba(255,255,255,.34)
   border-radius 7px
-  background-color #29313a
-  background-image
-    linear-gradient(45deg, rgba(255,255,255,.16) 25%, transparent 25%),
-    linear-gradient(-45deg, rgba(255,255,255,.16) 25%, transparent 25%)
-  background-size 14px 14px
+  background-color #223c4c
+  background-image url('/tabletime-playing-card-back.png')
+  background-size cover
+  background-position center
   box-shadow 0 8px 18px rgba(0,0,0,.38), inset 0 0 0 2px rgba(255,255,255,.08)
-
-  &::after {
-    content 'TABLETIME'
-    position absolute
-    inset 12px 8px
-    display grid
-    place-items center
-    border 1px solid rgba(255,255,255,.16)
-    border-radius 5px
-    color rgba(245,241,232,.86)
-    font-size 8px
-    font-weight 850
-    letter-spacing 0
-    background rgba(12,16,20,.18)
-  }
 `
 
 export const RemoteHandDragCard = s`div

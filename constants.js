@@ -10,8 +10,8 @@ export const HAND_SIZE = 7
 
 export const CHIP_SIZE = 38
 
-export const CARD_PORTRAIT_WIDTH = 104
-export const CARD_PORTRAIT_HEIGHT = 142
+export const CARD_PORTRAIT_WIDTH = 105
+export const CARD_PORTRAIT_HEIGHT = 147
 export const CARD_LANDSCAPE_WIDTH = CARD_PORTRAIT_HEIGHT
 export const CARD_LANDSCAPE_HEIGHT = CARD_PORTRAIT_WIDTH
 
