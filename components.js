@@ -304,17 +304,17 @@ export const BoardWrap = s`div
 
 export const BoardGrid = s`div
   display grid
-  grid-template-columns repeat(${BOARD_SIZE}, ${CELL_SIZE + 'px'})
-  grid-template-rows repeat(${BOARD_SIZE}, ${CELL_SIZE + 'px'})
-  gap 4px
+  grid-template-columns repeat(var(--board-size, ${BOARD_SIZE}), var(--cell-size, ${CELL_SIZE + 'px'}))
+  grid-template-rows repeat(var(--board-size, ${BOARD_SIZE}), var(--cell-size, ${CELL_SIZE + 'px'}))
+  gap var(--board-gap, 4px)
 `
 
 export const BoardCell = s`div
   position relative
   display grid
   place-items center
-  width ${CELL_SIZE + 'px'}
-  height ${CELL_SIZE + 'px'}
+  width var(--cell-size, ${CELL_SIZE + 'px'})
+  height var(--cell-size, ${CELL_SIZE + 'px'})
   border 1px solid rgba(44, 51, 59, .22)
   border-radius 6px
   background var(--paper)
@@ -324,6 +324,17 @@ export const BoardCell = s`div
 
   &[data-free="true"] {
     background #d7b365
+  }
+
+  &[data-board-kind="blokus"] {
+    border-radius 2px
+    border-color rgba(255,255,255,.16)
+    background #e8edf1
+    box-shadow inset 0 0 0 1px rgba(31,45,58,.08)
+  }
+
+  &[data-board-kind="blokus"][data-corner="true"] {
+    background #f1d28a
   }
 `
 
@@ -383,6 +394,56 @@ export const TableChip = s`button
     cursor default
     filter saturate(.75)
   }
+`
+
+export const PolyominoPieceButton = s`button
+  position absolute
+  z-index 7
+  display block
+  width var(--piece-width)
+  height var(--piece-height)
+  border 0
+  background transparent
+  padding 0
+  cursor grab
+  touch-action none
+
+  &:active {
+    cursor grabbing
+  }
+
+  &[data-selected="true"] {
+    filter drop-shadow(0 0 0 #f1d28a) drop-shadow(0 0 8px rgba(241,210,138,.85))
+  }
+
+  &[data-locked="true"] {
+    cursor default
+    filter saturate(.7)
+  }
+
+  &:disabled {
+    cursor default
+    filter saturate(.7)
+  }
+`
+
+export const PolyominoShape = s`div
+  position relative
+  width 100%
+  height 100%
+`
+
+export const PolyominoCell = s`span
+  position absolute
+  left calc(var(--cell-x) * var(--piece-cell-size))
+  top calc(var(--cell-y) * var(--piece-cell-size))
+  width var(--piece-cell-size)
+  height var(--piece-cell-size)
+  border 1px solid rgba(255,255,255,.62)
+  border-radius 4px
+  background var(--piece-color)
+  box-shadow inset 0 -4px 7px rgba(0,0,0,.2), inset 0 3px 6px rgba(255,255,255,.22), 0 4px 10px rgba(0,0,0,.24)
+  transition left 180ms cubic-bezier(.2,.8,.2,1), top 180ms cubic-bezier(.2,.8,.2,1)
 `
 
 export const TableCardButton = s`button

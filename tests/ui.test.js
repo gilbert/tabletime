@@ -120,12 +120,15 @@ function bindWindow(window) {
   expose('getComputedStyle', window.getComputedStyle.bind(window))
 }
 
-async function createClient(api, room, username) {
+async function createClient(api, room, username, { staleGameId = null } = {}) {
   await buildAppBundle()
 
   const sockets = new Set()
+  const url = new URL(`http://localhost:${api.port}/`)
+  url.searchParams.set('room', room)
+  if (staleGameId) url.searchParams.set('game', staleGameId)
   const window = new Window({
-    url: `http://localhost:${api.port}/?room=${room}`,
+    url: url.toString(),
     settings: {
       disableJavaScriptFileLoading: true,
       disableJavaScriptEvaluation: false
@@ -233,6 +236,71 @@ function remoteBackCount(client) {
   return client.document.querySelectorAll('[data-remote-hand-back="true"]').length
 }
 
+function blokusBoardCellCount(client) {
+  return client.document.querySelectorAll('[data-board-kind="blokus"]').length
+}
+
+function tablePieceCount(client) {
+  return client.document.querySelectorAll('[data-piece-id]').length
+}
+
+async function pointerDown(client, selector, { x = 10, y = 10 } = {}) {
+  client.activate()
+  const element = client.document.querySelector(selector)
+  assert(element, `${client.username} could not find ${selector}`)
+  element.dispatchEvent(new PointerEvent('pointerdown', {
+    bubbles: true,
+    cancelable: true,
+    pointerId: 1,
+    pointerType: 'mouse',
+    button: 0,
+    buttons: 1,
+    clientX: x,
+    clientY: y
+  }))
+  await client.window.happyDOM.waitUntilComplete()
+  return element
+}
+
+async function pointerMove(client, { x, y }) {
+  client.activate()
+  client.window.dispatchEvent(new PointerEvent('pointermove', {
+    bubbles: true,
+    cancelable: true,
+    pointerId: 1,
+    pointerType: 'mouse',
+    button: 0,
+    buttons: 1,
+    clientX: x,
+    clientY: y
+  }))
+  await client.window.happyDOM.waitUntilComplete()
+}
+
+async function pointerUp(client, { x = 10, y = 10 } = {}) {
+  client.activate()
+  client.window.dispatchEvent(new PointerEvent('pointerup', {
+    bubbles: true,
+    cancelable: true,
+    pointerId: 1,
+    pointerType: 'mouse',
+    button: 0,
+    buttons: 0,
+    clientX: x,
+    clientY: y
+  }))
+  await client.window.happyDOM.waitUntilComplete()
+}
+
+async function pointerTap(client, selector) {
+  await pointerDown(client, selector)
+  await pointerUp(client)
+}
+
+function pieceIsSelected(client, pieceId) {
+  return client.document.querySelector(`[data-piece-id="${pieceId}"]`)?.dataset.selected === 'true'
+}
+
 t`server-backed happy-dom UI`({
   timeout: 8000,
   async run(test) {
@@ -264,6 +332,36 @@ t`server-backed happy-dom UI`({
     } finally {
       await alice.close()
       await bob.close()
+    }
+  }),
+
+  t`switches games without changing rooms`(async api => {
+    const room = `ui-switch-room-${Date.now()}`
+    const alice = await createClient(api, room, 'alice')
+    const bob = await createClient(api, room, 'bob')
+
+    try {
+      await clickButton(alice, 'Blokus')
+      await waitFor(alice, () => text(alice.document.body.textContent).includes('Freeform Blokus table'))
+      await waitFor(bob, () => text(bob.document.body.textContent).includes('Freeform Blokus table'))
+      assert(alice.window.location.search.includes(`room=${room}`), 'Switching games should preserve the room query parameter.')
+      assert(!alice.window.location.search.includes('game='), 'Game should not be stored in the URL.')
+    } finally {
+      await alice.close()
+      await bob.close()
+    }
+  }),
+
+  t`ignores stale game query params`(async api => {
+    const room = `ui-stale-game-param-${Date.now()}`
+    const alice = await createClient(api, room, 'alice', { staleGameId: 'blokus' })
+
+    try {
+      assert(alice.window.location.search.includes(`room=${room}`), 'Stale game URL cleanup should keep the room.')
+      assert(!alice.window.location.search.includes('game='), 'Stale game query params should be removed.')
+      assert(text(alice.document.body.textContent).includes('Sequence'), 'Rooms should open using room state, not game query params.')
+    } finally {
+      await alice.close()
     }
   }),
 
@@ -317,6 +415,68 @@ t`server-backed happy-dom UI`({
       await alice.close()
       await bob.close()
       await charlie.close()
+    }
+  }),
+
+  t`renders blokus without hands`(async api => {
+    const room = `ui-blokus-${Date.now()}`
+    const alice = await createClient(api, room, 'alice')
+    const bob = await createClient(api, room, 'bob')
+
+    try {
+      await clickButton(alice, 'Blokus')
+      await waitFor(alice, () => text(alice.document.body.textContent).includes('Blokus'))
+      await waitFor(bob, () => text(bob.document.body.textContent).includes('Blokus'))
+      assert(blokusBoardCellCount(alice) === 400, 'Blokus should render a 20x20 board.')
+      assert(alice.document.querySelector('[data-hand-cards]') === null, 'Blokus should not render a hand zone.')
+      assert(tablePieceCount(alice) === 84, 'Blokus should render all pieces on the table.')
+
+      await clickSeat(alice, 'blue')
+      await waitFor(alice, () => seatText(alice, 'blue').includes('alice'))
+      await clickSeat(bob, 'gold')
+      await waitFor(alice, () => seatText(alice, 'gold').includes('bob'))
+
+      await clickButton(alice, 'Start')
+      await waitFor(alice, () => text(alice.document.body.textContent).includes('Started'))
+      assert(handCardCount(alice) === 0, 'Starting Blokus should not deal hand cards.')
+      assert(remoteBackCount(alice) === 0, 'Blokus should not render remote hand backs.')
+    } finally {
+      await alice.close()
+      await bob.close()
+    }
+  }),
+
+  t`keeps blokus piece selection consistent`(async api => {
+    const room = `ui-blokus-selection-${Date.now()}`
+    const alice = await createClient(api, room, 'alice')
+
+    try {
+      await clickButton(alice, 'Blokus')
+      await waitFor(alice, () => text(alice.document.body.textContent).includes('Blokus'))
+      await clickSeat(alice, 'blue')
+      await waitFor(alice, () => seatText(alice, 'blue').includes('alice'))
+
+      await pointerTap(alice, '[data-piece-id="piece-blue-mono"]')
+      await waitFor(alice, () => pieceIsSelected(alice, 'piece-blue-mono'))
+
+      await pointerTap(alice, '[data-piece-id="piece-blue-mono"]')
+      assert(pieceIsSelected(alice, 'piece-blue-mono'), 'Clicking a selected Blokus piece should keep it selected.')
+
+      await pointerDown(alice, '[data-piece-id="piece-blue-mono"]', { x: 10, y: 10 })
+      await pointerMove(alice, { x: 30, y: 30 })
+      assert(pieceIsSelected(alice, 'piece-blue-mono'), 'Dragging a selected Blokus piece should keep it selected while dragging.')
+      await pointerUp(alice, { x: 30, y: 30 })
+      assert(pieceIsSelected(alice, 'piece-blue-mono'), 'Dropping a selected Blokus piece should keep it selected.')
+
+      await pointerDown(alice, '[data-piece-id="piece-blue-domino"]', { x: 10, y: 10 })
+      await pointerMove(alice, { x: 30, y: 30 })
+      assert(pieceIsSelected(alice, 'piece-blue-domino'), 'Dragging an unselected Blokus piece should select it while dragging.')
+      await pointerUp(alice, { x: 30, y: 30 })
+
+      await pointerTap(alice, '[data-table-surface="true"]')
+      assert(!pieceIsSelected(alice, 'piece-blue-domino'), 'Clicking the table should deselect the selected Blokus piece.')
+    } finally {
+      await alice.close()
     }
   })
 )

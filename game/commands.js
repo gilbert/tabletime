@@ -11,11 +11,12 @@ import {
   TABLE_WIDTH
 } from '../constants.js'
 import { cardDropRule, CARD_DRAG_TYPE, CARD_DROP_ACTION, ZONE } from '../zones.js'
-import { cloneGameState, createInitialGameState, normalizeGameState, players, shuffle, suits } from './setup.js'
+import { cloneGameState, createInitialGameState, getGameConfig, normalizeGameState, players, shuffle, suits } from './setup.js'
 
 export const COMMAND = Object.freeze({
   RESET: 'game.reset',
   START: 'game.start',
+  GAME_CHANGE: 'game.change',
   SEAT_JOIN: 'seat.join',
   SEAT_LEAVE: 'seat.leave',
   SWITCH_PLAYER: 'player.switch',
@@ -35,7 +36,13 @@ export const COMMAND = Object.freeze({
   CARD_TABLE_MOVE: 'card.tableMove',
   CARD_FLIP: 'card.flip',
   CARD_ROTATE: 'card.rotate',
-  CARD_LOCK: 'card.lock'
+  CARD_LOCK: 'card.lock',
+  PIECE_CREATE: 'piece.create',
+  PIECE_MOVE: 'piece.move',
+  PIECE_ROTATE: 'piece.rotate',
+  PIECE_FLIP: 'piece.flip',
+  PIECE_LOCK: 'piece.lock',
+  PIECE_RETURN: 'piece.return'
 })
 
 const COMPONENT_COMMANDS_REQUIRING_SEAT = new Set([
@@ -52,7 +59,13 @@ const COMPONENT_COMMANDS_REQUIRING_SEAT = new Set([
   COMMAND.CARD_TABLE_MOVE,
   COMMAND.CARD_FLIP,
   COMMAND.CARD_ROTATE,
-  COMMAND.CARD_LOCK
+  COMMAND.CARD_LOCK,
+  COMMAND.PIECE_CREATE,
+  COMMAND.PIECE_MOVE,
+  COMMAND.PIECE_ROTATE,
+  COMMAND.PIECE_FLIP,
+  COMMAND.PIECE_LOCK,
+  COMMAND.PIECE_RETURN
 ])
 
 export function applyCommand(state, command, { random = Math.random, actor = null } = {}) {
@@ -79,6 +92,9 @@ function applyCommandMutation(state, command, { random, actor }) {
     case COMMAND.START:
       return startGame(state)
 
+    case COMMAND.GAME_CHANGE:
+      return changeGame(state, command.payload, random)
+
     case COMMAND.SEAT_JOIN:
       return joinSeat(state, command.payload, actor)
 
@@ -92,6 +108,7 @@ function applyCommandMutation(state, command, { random, actor }) {
       return drawToActorHand(state, command.payload?.count || 1, random, actor)
 
     case COMMAND.SHUFFLE_DRAW:
+      if (!featureEnabled(state, 'deck')) return reject('Draw deck is not available for this game.')
       state.drawPile = shuffle(state.drawPile, random)
       return accept('Draw deck shuffled.')
 
@@ -149,6 +166,24 @@ function applyCommandMutation(state, command, { random, actor }) {
         return `${cardLabel(piece.card)} ${piece.locked ? 'locked' : 'unlocked'}.`
       })
 
+    case COMMAND.PIECE_CREATE:
+      return createPiece(state, command.payload, actor)
+
+    case COMMAND.PIECE_MOVE:
+      return movePiece(state, command.payload, actor)
+
+    case COMMAND.PIECE_ROTATE:
+      return rotatePiece(state, command.payload, actor)
+
+    case COMMAND.PIECE_FLIP:
+      return flipPiece(state, command.payload, actor)
+
+    case COMMAND.PIECE_LOCK:
+      return togglePieceLock(state, command.payload, actor)
+
+    case COMMAND.PIECE_RETURN:
+      return returnPiece(state, command.payload, actor)
+
     default:
       return reject(`Unsupported command: ${command.type}`)
   }
@@ -172,14 +207,22 @@ export function applySnapshot(target, snapshot) {
 }
 
 function switchPlayer(state, payload = {}) {
-  const player = players.find(item => item.id === payload.playerId)
+  const player = playersForState(state).find(item => item.id === payload.playerId)
   state.activePlayerId = payload.playerId || state.activePlayerId
   return accept(`${player?.name || payload.playerName || 'Player'} is active.`)
 }
 
+function changeGame(state, payload = {}, random) {
+  const gameConfig = getGameConfig(payload.gameId)
+  if (!payload.gameId || gameConfig.id !== payload.gameId) return reject('Game not found.')
+  if (state.gameId === gameConfig.id) return reject(`${gameConfig.name} is already selected.`)
+
+  replaceState(state, createInitialGameState({ random, gameId: gameConfig.id }))
+  return accept(`Switched to ${gameConfig.name}.`)
+}
+
 function startGame(state) {
   ensureSeats(state)
-  ensureHands(state)
   if (state.started) return reject('Game is already started.')
   const occupiedSeats = state.seats.filter(seat => seat.clientId)
   const occupiedSeatCount = occupiedSeats.length
@@ -188,12 +231,17 @@ function startGame(state) {
     return reject(`At least ${minPlayersToStart} players must be seated to start.`)
   }
 
-  state.handsByPlayerId = Object.fromEntries(occupiedSeats.map(seat => [seat.playerId, []]))
-  for (let cardIndex = 0; cardIndex < HAND_SIZE; cardIndex++) {
-    for (const seat of occupiedSeats) {
-      const card = state.drawPile.pop()
-      if (card) state.handsByPlayerId[seat.playerId].push(card)
+  if (featureEnabled(state, 'hands')) {
+    ensureHands(state)
+    state.handsByPlayerId = Object.fromEntries(occupiedSeats.map(seat => [seat.playerId, []]))
+    for (let cardIndex = 0; cardIndex < HAND_SIZE; cardIndex++) {
+      for (const seat of occupiedSeats) {
+        const card = state.drawPile.pop()
+        if (card) state.handsByPlayerId[seat.playerId].push(card)
+      }
     }
+  } else {
+    state.handsByPlayerId = {}
   }
 
   state.activePlayerId = occupiedSeats[0]?.playerId || state.activePlayerId
@@ -251,6 +299,9 @@ function leaveSeat(state, payload = {}, actor = null) {
 function drawToActorHand(state, count, random, actor) {
   ensureSeats(state)
   ensureHands(state)
+  if (!featureEnabled(state, 'hands') || !featureEnabled(state, 'deck')) {
+    return reject('Drawing is not available for this game.')
+  }
   if (!state.started) return reject('Start the game before drawing.')
   if (!actor?.clientId) return reject('Connection identity is required to draw.')
 
@@ -357,6 +408,9 @@ function returnChip(state, payload = {}) {
 function handCardToDiscard(state, payload = {}, actor = null) {
   ensureSeats(state)
   ensureHands(state)
+  if (!featureEnabled(state, 'hands') || !featureEnabled(state, 'discard')) {
+    return reject('Hands are not available for this game.')
+  }
   const rule = cardDropRule(payload.zoneId || ZONE.DISCARD, CARD_DRAG_TYPE.HAND)
   if (rule?.action !== CARD_DROP_ACTION.MOVE_TO_DISCARD) return reject('Discard does not accept that card.')
   if (!state.started) return reject('Start the game before playing a card.')
@@ -384,6 +438,9 @@ function cardLabel(card) {
 function discardCardToHand(state, payload = {}, actor = null) {
   ensureSeats(state)
   ensureHands(state)
+  if (!featureEnabled(state, 'hands') || !featureEnabled(state, 'discard')) {
+    return reject('Hands are not available for this game.')
+  }
   const rule = cardDropRule(payload.zoneId || ZONE.HAND, CARD_DRAG_TYPE.DISCARD)
   if (rule?.action !== CARD_DROP_ACTION.MOVE_TO_HAND) return reject('Hand does not accept that card.')
   if (!state.started) return reject('Start the game before taking a card.')
@@ -407,6 +464,9 @@ function discardCardToHand(state, payload = {}, actor = null) {
 }
 
 function discardCardToTable(state, payload = {}) {
+  if (!featureEnabled(state, 'discard') || !featureEnabled(state, 'cards')) {
+    return reject('Discard is not available for this game.')
+  }
   const rule = cardDropRule(payload.zoneId || ZONE.TABLE, CARD_DRAG_TYPE.DISCARD)
   if (rule?.action !== CARD_DROP_ACTION.PLACE_ON_TABLE) return reject('Table does not accept that card.')
 
@@ -425,6 +485,9 @@ function tableCardToHand(state, payload = {}) {
 }
 
 function tableCardToDiscard(state, payload = {}) {
+  if (!featureEnabled(state, 'discard') || !featureEnabled(state, 'cards')) {
+    return reject('Discard is not available for this game.')
+  }
   const rule = cardDropRule(payload.zoneId || ZONE.DISCARD, CARD_DRAG_TYPE.TABLE)
   if (rule?.action !== CARD_DROP_ACTION.MOVE_TO_DISCARD) return reject('Discard does not accept that card.')
 
@@ -454,6 +517,150 @@ function updateTableCard(state, pieceId, update) {
   if (!piece) return reject('Table card not found.')
 
   return accept(update(piece))
+}
+
+function createPiece(state, payload = {}, actor = null) {
+  if (!featureEnabled(state, 'polyominoes')) return reject('Pieces are not available for this game.')
+  if (!payload.pieceId) return reject('Piece id is required.')
+  if (pieceById(state, payload.pieceId)) return reject('Piece already exists.')
+
+  const seat = actorSeat(state, actor)
+  if (!seat) return reject('Join a seat before manipulating components.')
+  if (payload.playerId && payload.playerId !== seat.playerId) return reject('You can only create your own pieces.')
+
+  const position = clampPiecePosition(payload.x, payload.y, payload.width || 1, payload.height || 1)
+  state.pieces.push({
+    id: payload.pieceId,
+    kind: payload.kind || 'polyomino',
+    name: payload.name || 'Piece',
+    playerId: seat.playerId,
+    cells: Array.isArray(payload.cells) ? payload.cells : [{ x: 0, y: 0 }],
+    x: position.x,
+    y: position.y,
+    rotation: normalizedQuarterTurn(payload.rotation),
+    flipped: Boolean(payload.flipped),
+    locked: false,
+    inSupply: false,
+    source: payload.source || 'piece-tray'
+  })
+  return accept(`${seat.playerName} piece placed.`)
+}
+
+function movePiece(state, payload = {}, actor = null) {
+  if (!featureEnabled(state, 'polyominoes')) return reject('Pieces are not available for this game.')
+  const piece = pieceById(state, payload.pieceId)
+  if (!piece) return reject('Piece not found.')
+  const seat = actorSeat(state, actor)
+  const ownership = rejectPieceOwnership(piece, seat)
+  if (ownership) return ownership
+  if (piece.locked) return reject('Piece is locked.')
+
+  const size = {
+    width: Math.max(1, Number(payload.width) || pieceWidth(piece)),
+    height: Math.max(1, Number(payload.height) || pieceHeight(piece))
+  }
+  const position = clampPiecePosition(payload.x, payload.y, size.width, size.height)
+  piece.x = position.x
+  piece.y = position.y
+  piece.inSupply = false
+  return accept(`${pieceLabel(state, piece)} placed.`)
+}
+
+function rotatePiece(state, payload = {}, actor = null) {
+  return updateOwnedPiece(state, payload?.pieceId, actor, piece => {
+    piece.rotation = (normalizedQuarterTurn(piece.rotation) + 1) % 4
+    return `${pieceLabel(state, piece)} rotated.`
+  })
+}
+
+function flipPiece(state, payload = {}, actor = null) {
+  return updateOwnedPiece(state, payload?.pieceId, actor, piece => {
+    piece.flipped = !piece.flipped
+    return `${pieceLabel(state, piece)} flipped.`
+  })
+}
+
+function togglePieceLock(state, payload = {}, actor = null) {
+  return updateOwnedPiece(state, payload?.pieceId, actor, piece => {
+    piece.locked = !piece.locked
+    return `${pieceLabel(state, piece)} ${piece.locked ? 'locked' : 'unlocked'}.`
+  }, { allowLocked: true })
+}
+
+function returnPiece(state, payload = {}, actor = null) {
+  return updateOwnedPiece(state, payload?.pieceId, actor, () => {
+    return 'Pieces stay on the table.'
+  }, { allowLocked: true })
+}
+
+function updateOwnedPiece(state, pieceId, actor, update, { allowLocked = false } = {}) {
+  if (!featureEnabled(state, 'polyominoes')) return reject('Pieces are not available for this game.')
+  const piece = pieceById(state, pieceId)
+  if (!piece) return reject('Piece not found.')
+  const seat = actorSeat(state, actor)
+  const ownership = rejectPieceOwnership(piece, seat)
+  if (ownership) return ownership
+  if (piece.locked && !allowLocked) return reject('Piece is locked.')
+  return accept(update(piece))
+}
+
+function rejectPieceOwnership(piece, seat) {
+  if (!seat) return reject('Join a seat before manipulating components.')
+  if (piece.playerId !== seat.playerId) return reject('You can only manipulate your own pieces.')
+  return null
+}
+
+function actorSeat(state, actor) {
+  if (!actor?.clientId) return null
+  return state.seats?.find(seat => seat.clientId === actor.clientId) || null
+}
+
+function pieceLabel(state, piece) {
+  const player = playersForState(state).find(item => item.id === piece?.playerId)
+  return `${player?.name || 'Player'} ${piece?.name || 'piece'}`
+}
+
+function normalizedQuarterTurn(value) {
+  const turn = Number(value) || 0
+  return ((turn % 4) + 4) % 4
+}
+
+function pieceWidth(piece) {
+  return pieceBounds(piece).width * pieceCellSize(piece)
+}
+
+function pieceHeight(piece) {
+  return pieceBounds(piece).height * pieceCellSize(piece)
+}
+
+function pieceBounds(piece) {
+  const cells = transformedCells(piece)
+  const maxX = Math.max(0, ...cells.map(cell => cell.x))
+  const maxY = Math.max(0, ...cells.map(cell => cell.y))
+  return { width: maxX + 1, height: maxY + 1 }
+}
+
+function transformedCells(piece) {
+  const rotation = normalizedQuarterTurn(piece.rotation)
+  const raw = (piece.cells || []).map(cell => {
+    let x = Number(cell.x) || 0
+    let y = Number(cell.y) || 0
+    if (piece.flipped) x = -x
+
+    for (let i = 0; i < rotation; i++) {
+      ;[x, y] = [-y, x]
+    }
+
+    return { x, y }
+  })
+
+  const minX = Math.min(0, ...raw.map(cell => cell.x))
+  const minY = Math.min(0, ...raw.map(cell => cell.y))
+  return raw.map(cell => ({ x: cell.x - minX, y: cell.y - minY }))
+}
+
+function pieceCellSize(piece) {
+  return Number(piece.cellSize) || 24
 }
 
 function makeTableCardPiece(card, payload) {
@@ -494,6 +701,10 @@ function tableCardById(state, id) {
   return state.tableCards.find(piece => piece.id === id)
 }
 
+function pieceById(state, id) {
+  return state.pieces?.find(piece => piece.id === id)
+}
+
 function topDiscardCard(state) {
   return state.discardPile[state.discardPile.length - 1]
 }
@@ -524,11 +735,12 @@ function replaceState(target, source) {
 
 function ensureSeats(state) {
   if (typeof state.started !== 'boolean') state.started = false
-  if (!state.gameId) state.gameId = 'sequence'
-  if (!state.minPlayersToStart) state.minPlayersToStart = 2
+  const gameConfig = getGameConfig(state.gameId)
+  state.gameId = gameConfig.id
+  if (!state.minPlayersToStart) state.minPlayersToStart = gameConfig.minPlayersToStart || 2
   ensureLogConfig(state)
   if (!Array.isArray(state.seats)) {
-    state.seats = players.map(player => ({
+    state.seats = gameConfig.players.map(player => ({
       playerId: player.id,
       playerName: player.name,
       color: player.color,
@@ -538,7 +750,7 @@ function ensureSeats(state) {
     return
   }
 
-  for (const player of players) {
+  for (const player of gameConfig.players) {
     if (state.seats.some(seat => seat.playerId === player.id)) continue
     state.seats.push({
       playerId: player.id,
@@ -558,29 +770,24 @@ function ensureHands(state) {
 
 function ensureLogConfig(state) {
   if (!state.logConfig) {
+    const gameConfig = getGameConfig(state.gameId)
     state.logConfig = {
-      maxEntries: 100,
-      commandTypes: [
-        COMMAND.START,
-        COMMAND.SEAT_JOIN,
-        COMMAND.SEAT_LEAVE,
-        COMMAND.DRAW,
-        COMMAND.SHUFFLE_DRAW,
-        COMMAND.CARD_HAND_TO_DISCARD,
-        COMMAND.CARD_DISCARD_TO_TABLE,
-        COMMAND.CARD_TABLE_TO_DISCARD,
-        COMMAND.CARD_FLIP,
-        COMMAND.CARD_ROTATE,
-        COMMAND.CARD_LOCK,
-        COMMAND.CHIP_LOCK,
-        COMMAND.CHIP_RETURN,
-        COMMAND.OBJECT_LOCK
-      ]
+      maxEntries: gameConfig.log?.maxEntries || 100,
+      commandTypes: [...(gameConfig.log?.commandTypes || [])]
     }
   }
 
   state.logConfig.maxEntries = Number(state.logConfig.maxEntries) || 100
   if (!Array.isArray(state.logConfig.commandTypes)) state.logConfig.commandTypes = []
+}
+
+function featureEnabled(state, feature) {
+  normalizeGameState(state)
+  return state.features?.[feature] !== false
+}
+
+function playersForState(state) {
+  return getGameConfig(state.gameId).players || players
 }
 
 function clampPiecePosition(x, y, width, height) {

@@ -1,75 +1,32 @@
-import { BOARD_SIZE, HAND_SIZE } from '../constants.js'
+import { HAND_SIZE } from '../constants.js'
+import { blokusGame } from '../games/blokus.js'
+import { players, ranks, sequenceGame, sequenceSpaces, suits } from '../games/sequence.js'
 
-export const players = [
-  { id: 'red', name: 'Red', color: '#c73538' },
-  { id: 'blue', name: 'Blue', color: '#2267b8' },
-  { id: 'green', name: 'Green', color: '#2f855a' },
-  { id: 'gold', name: 'Gold', color: '#b7791f' }
-]
+export { players, sequenceSpaces, suits }
 
 export const gameConfigs = Object.freeze({
-  sequence: {
-    id: 'sequence',
-    name: 'Sequence',
-    minPlayersToStart: 2,
-    log: {
-      maxEntries: 100,
-      commandTypes: [
-        'game.start',
-        'seat.join',
-        'seat.leave',
-        'deck.draw',
-        'deck.shuffle',
-        'card.handToDiscard',
-        'card.discardToHand',
-        'card.discardToTable',
-        'card.tableToDiscard',
-        'card.flip',
-        'card.rotate',
-        'card.lock',
-        'chip.lock',
-        'chip.return',
-        'object.lock'
-      ]
-    }
-  },
-  blokus: {
-    id: 'blokus',
-    name: 'Blokus',
-    minPlayersToStart: 2,
-    log: {
-      maxEntries: 100,
-      commandTypes: [
-        'game.start',
-        'seat.join',
-        'seat.leave'
-      ]
-    }
-  }
+  sequence: sequenceGame,
+  blokus: blokusGame
 })
 
-export const suits = [
-  { id: 'S', name: 'Spades', symbol: '♠', color: '#1f2937' },
-  { id: 'H', name: 'Hearts', symbol: '♥', color: '#c73538' },
-  { id: 'D', name: 'Diamonds', symbol: '♦', color: '#c73538' },
-  { id: 'C', name: 'Clubs', symbol: '♣', color: '#1f2937' }
-]
-
-export const ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
-
-const cornerIndexes = new Set([0, BOARD_SIZE - 1, BOARD_SIZE * (BOARD_SIZE - 1), BOARD_SIZE * BOARD_SIZE - 1])
-
-export const sequenceSpaces = buildSequenceSpaces()
+export function getGameConfig(gameId = 'sequence') {
+  return gameConfigs[gameId] || gameConfigs.sequence
+}
 
 export function createInitialGameState({ random = Math.random, gameId = 'sequence' } = {}) {
-  const gameConfig = gameConfigs[gameId] || gameConfigs.sequence
+  const gameConfig = getGameConfig(gameId)
   const state = {
     nextId: 1,
     gameId: gameConfig.id,
+    gameName: gameConfig.name,
+    gameSubtitle: gameConfig.subtitle,
+    features: clonePlain(gameConfig.features || {}),
+    board: clonePlain(gameConfig.board || null),
+    polyominoes: clonePlain(gameConfig.polyominoes || null),
     minPlayersToStart: gameConfig.minPlayersToStart,
     started: false,
-    activePlayerId: players[0].id,
-    seats: players.map(player => ({
+    activePlayerId: gameConfig.players[0].id,
+    seats: gameConfig.players.map(player => ({
       playerId: player.id,
       playerName: player.name,
       color: player.color,
@@ -80,56 +37,21 @@ export function createInitialGameState({ random = Math.random, gameId = 'sequenc
     selectedTableCardId: null,
     selectedDiscardCardId: null,
     selectedChipId: null,
+    selectedPieceId: null,
     drawPile: [],
     discardPile: [],
     handsByPlayerId: {},
     chips: [],
     tableCards: [],
-    objects: initialObjects(),
+    pieces: [],
+    objects: gameConfig.objects ? gameConfig.objects() : [],
     logConfig: cloneLogConfig(gameConfig.log),
-    log: ['Prototype loaded with a Sequence reference setup.']
+    log: [`${gameConfig.name} loaded.`]
   }
 
-  state.drawPile = shuffle(makeDeck(state, 2), random)
+  gameConfig.setup?.(state, { makeDeck, random, shuffle })
 
   return state
-}
-
-export function initialObjects() {
-  return [
-    {
-      id: 'sequence-board',
-      type: 'board',
-      title: 'Sequence Board',
-      x: 410,
-      y: 150,
-      locked: true
-    },
-    {
-      id: 'draw-deck',
-      type: 'deck',
-      title: 'Draw Deck',
-      x: 118,
-      y: 220,
-      locked: false
-    },
-    {
-      id: 'discard-tray',
-      type: 'discard',
-      title: 'Discard',
-      x: 1275,
-      y: 235,
-      locked: false
-    },
-    {
-      id: 'chip-supply',
-      type: 'supply',
-      title: 'Chip Supply',
-      x: 125,
-      y: 560,
-      locked: false
-    }
-  ]
 }
 
 export function makeDeck(state, copies = 1) {
@@ -179,6 +101,16 @@ export function cloneGameState(state) {
 
 export function normalizeGameState(state) {
   if (!state || typeof state !== 'object' || Array.isArray(state)) return state
+  const gameConfig = getGameConfig(state.gameId)
+  state.gameId = gameConfig.id
+  state.gameName = state.gameName || gameConfig.name
+  state.gameSubtitle = state.gameSubtitle || gameConfig.subtitle
+  state.features = state.features && typeof state.features === 'object'
+    ? { ...(gameConfig.features || {}), ...state.features }
+    : clonePlain(gameConfig.features || {})
+  state.board = state.board || clonePlain(gameConfig.board || null)
+  state.polyominoes = state.polyominoes || clonePlain(gameConfig.polyominoes || null)
+  if (!Array.isArray(state.pieces)) state.pieces = []
 
   if (!state.handsByPlayerId || typeof state.handsByPlayerId !== 'object' || Array.isArray(state.handsByPlayerId)) {
     state.handsByPlayerId = {}
@@ -213,40 +145,13 @@ export function normalizeGameState(state) {
   return state
 }
 
+function clonePlain(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value))
+}
+
 function cloneLogConfig(logConfig) {
   return {
     maxEntries: logConfig?.maxEntries || 100,
     commandTypes: [...(logConfig?.commandTypes || [])]
   }
-}
-
-function buildSequenceSpaces() {
-  const nonJacks = []
-
-  for (let copy = 0; copy < 2; copy++) {
-    for (const suit of suits) {
-      for (const rank of ranks) {
-        if (rank !== 'J') nonJacks.push({ rank, suit: suit.id, code: `${rank}${suit.id}`, copy })
-      }
-    }
-  }
-
-  let cardIndex = 0
-
-  return Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, index) => {
-    const row = Math.floor(index / BOARD_SIZE)
-    const col = index % BOARD_SIZE
-
-    if (cornerIndexes.has(index)) {
-      return { id: `space-${row}-${col}`, row, col, free: true, code: 'FREE' }
-    }
-
-    return {
-      id: `space-${row}-${col}`,
-      row,
-      col,
-      free: false,
-      ...nonJacks[cardIndex++]
-    }
-  })
 }

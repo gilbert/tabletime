@@ -1,6 +1,5 @@
 import s from 'cofound'
 import {
-  BOARD_SIZE,
   CARD_LANDSCAPE_HEIGHT,
   CARD_LANDSCAPE_WIDTH,
   CARD_PORTRAIT_HEIGHT,
@@ -62,6 +61,9 @@ import {
   Pill,
   PanelActions,
   PresenceCursor,
+  PolyominoCell,
+  PolyominoPieceButton,
+  PolyominoShape,
   RemoteHandDragCard,
   RemoteHandBack,
   RemoteHandCards,
@@ -95,7 +97,7 @@ import {
   installGlobalStyles
 } from './components.js'
 import { applyCommand, applySnapshot, COMMAND, createCommand } from './game/commands.js'
-import { createInitialGameState, players, sequenceSpaces, suits } from './game/setup.js'
+import { createInitialGameState, gameConfigs, getGameConfig, players, sequenceSpaces, suits } from './game/setup.js'
 import { createMultiplayerClient } from './network.js'
 import { CARD_DRAG_TYPE, CARD_DROP_ACTION, ZONE, cardDropRule, zoneAcceptsCardDrop } from './zones.js'
 
@@ -120,9 +122,11 @@ let lastPointer = null
 const remotePresence = new Map()
 const drawAnimatingCardIds = new Set()
 const DRAW_ANIMATION_MS = 340
+const PIECE_DRAG_TYPE = 'piece'
 const SERVER_AUTHORITATIVE_COMMANDS = new Set([
   COMMAND.RESET,
   COMMAND.START,
+  COMMAND.GAME_CHANGE,
   COMMAND.SEAT_JOIN,
   COMMAND.SEAT_LEAVE,
   COMMAND.DRAW,
@@ -134,7 +138,19 @@ const SERVER_AUTHORITATIVE_COMMANDS = new Set([
 const state = createInitialGameState()
 
 function activePlayer() {
-  return players.find(player => player.id === state.activePlayerId) || players[0]
+  return playersForCurrentGame().find(player => player.id === state.activePlayerId) || playersForCurrentGame()[0]
+}
+
+function currentGameConfig() {
+  return getGameConfig(state.gameId)
+}
+
+function playersForCurrentGame() {
+  return currentGameConfig().players || players
+}
+
+function featureEnabled(feature) {
+  return state.features?.[feature] !== false
 }
 
 function suitMeta(suitId) {
@@ -166,6 +182,10 @@ function tableCardById(id) {
   return state.tableCards.find(piece => piece.id === id)
 }
 
+function pieceById(id) {
+  return state.pieces?.find(piece => piece.id === id)
+}
+
 function selectedTableCard() {
   return tableCardById(state.selectedTableCardId)
 }
@@ -174,8 +194,14 @@ function selectedDiscardCard() {
   return state.discardPile.find(card => card.id === state.selectedDiscardCardId)
 }
 
+function selectedPiece() {
+  return pieceById(state.selectedPieceId)
+}
+
 function playerById(id) {
-  return players.find(player => player.id === id) || players[0]
+  const seat = seatsForDisplay().find(player => player.playerId === id)
+  if (seat) return { id: seat.playerId, name: seat.playerName, color: seat.color }
+  return playersForCurrentGame().find(player => player.id === id) || playersForCurrentGame()[0]
 }
 
 function seatForClient(clientId) {
@@ -187,7 +213,7 @@ function localSeat() {
 }
 
 function seatsForDisplay() {
-  return state.seats || players.map(player => ({
+  return state.seats || playersForCurrentGame().map(player => ({
     playerId: player.id,
     playerName: player.name,
     color: player.color,
@@ -259,6 +285,7 @@ function shuffleDrawPile() {
 }
 
 function drawUnavailableReason() {
+  if (!featureEnabled('hands') || !featureEnabled('deck')) return 'Drawing is not available for this game.'
   if (!state.started) return 'Start the game before drawing.'
   const seat = localSeat()
   if (!seat) return 'Join a seat before drawing.'
@@ -273,6 +300,7 @@ function selectHandCard(cardId) {
   state.selectedTableCardId = null
   state.selectedDiscardCardId = null
   state.selectedChipId = null
+  state.selectedPieceId = null
 }
 
 function switchPlayer(playerId) {
@@ -284,6 +312,7 @@ function selectTableCard(pieceId) {
   state.selectedHandCardId = null
   state.selectedDiscardCardId = null
   state.selectedChipId = null
+  state.selectedPieceId = null
 }
 
 function selectDiscardCard(cardId) {
@@ -291,6 +320,7 @@ function selectDiscardCard(cardId) {
   state.selectedHandCardId = null
   state.selectedTableCardId = null
   state.selectedChipId = null
+  state.selectedPieceId = null
 }
 
 function selectChip(chipId) {
@@ -298,6 +328,15 @@ function selectChip(chipId) {
   state.selectedHandCardId = null
   state.selectedTableCardId = null
   state.selectedDiscardCardId = null
+  state.selectedPieceId = null
+}
+
+function selectPiece(pieceId) {
+  state.selectedPieceId = pieceId
+  state.selectedHandCardId = null
+  state.selectedTableCardId = null
+  state.selectedDiscardCardId = null
+  state.selectedChipId = null
 }
 
 function resetPrototype({ confirm = false } = {}) {
@@ -315,6 +354,13 @@ function joinSeat(playerId) {
 
 function leaveSeat(playerId) {
   submitCommand(createCommand(COMMAND.SEAT_LEAVE, { playerId }))
+}
+
+function clearPieceSelectionFromTable(event) {
+  if (!state.selectedPieceId) return
+  if (event.target.closest?.('[data-piece-id]')) return
+  state.selectedPieceId = null
+  scheduleRedraw()
 }
 
 function handleSeatAction(seat) {
@@ -380,7 +426,8 @@ function applyAuthoritativeSnapshot(snapshot, message = {}) {
     selectedHandCardId: state.selectedHandCardId,
     selectedTableCardId: state.selectedTableCardId,
     selectedDiscardCardId: state.selectedDiscardCardId,
-    selectedChipId: state.selectedChipId
+    selectedChipId: state.selectedChipId,
+    selectedPieceId: state.selectedPieceId
   }
 
   applySnapshot(state, snapshot)
@@ -554,6 +601,7 @@ function pruneMissingSelections() {
   if (state.selectedTableCardId && !selectedTableCard()) state.selectedTableCardId = null
   if (state.selectedDiscardCardId && !selectedDiscardCard()) state.selectedDiscardCardId = null
   if (state.selectedChipId && !chipById(state.selectedChipId)) state.selectedChipId = null
+  if (state.selectedPieceId && !selectedPiece()) state.selectedPieceId = null
 }
 
 function pruneUnseatedPresence() {
@@ -568,6 +616,7 @@ function attachNetworking() {
 
   const params = new URLSearchParams(window.location.search)
   roomId = params.get('room') || roomId
+  removeGameParamFromUrl(params)
   const credentials = loadRoomCredentials(roomId)
 
   if (!credentials) {
@@ -609,6 +658,20 @@ function connectToRoom(credentials) {
       else scheduleRedraw()
     }
   })
+}
+
+function changeGame(nextGameId) {
+  const config = getGameConfig(nextGameId)
+  if (state.gameId === config.id || roomCommandUnavailable()) return
+  submitCommand(createCommand(COMMAND.GAME_CHANGE, { gameId: config.id }))
+}
+
+function removeGameParamFromUrl(params) {
+  if (!params.has('game') || s.is.server) return
+  params.delete('game')
+  const query = params.toString()
+  const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`
+  window.history.replaceState(window.history.state, '', nextUrl)
 }
 
 function handleAuthError(message) {
@@ -722,6 +785,7 @@ function currentSelection() {
   if (state.selectedTableCardId) return { kind: 'table-card', id: state.selectedTableCardId }
   if (state.selectedDiscardCardId) return { kind: 'discard-card', id: state.selectedDiscardCardId }
   if (state.selectedChipId) return { kind: 'chip', id: state.selectedChipId }
+  if (state.selectedPieceId) return { kind: 'piece', id: state.selectedPieceId }
   return null
 }
 
@@ -739,6 +803,11 @@ function dragPresence() {
   if (dragState.type === 'chip') {
     const chip = chipById(dragState.chipId)
     return { ...base, kind: 'chip', id: dragState.chipId, x: chip?.x, y: chip?.y }
+  }
+
+  if (dragState.type === PIECE_DRAG_TYPE) {
+    const piece = pieceById(dragState.pieceId)
+    return { ...base, kind: 'piece', id: dragState.pieceId, x: piece?.x, y: piece?.y }
   }
 
   if (dragState.type === CARD_DRAG_TYPE.TABLE) {
@@ -842,6 +911,20 @@ function attachPointerListeners() {
       moveDragGhost(event.clientX, event.clientY)
     }
 
+    if (dragState.type === PIECE_DRAG_TYPE) {
+      const piece = pieceById(dragState.pieceId)
+      if (!piece || piece.locked) return
+
+      dragState.clientX = event.clientX
+      dragState.clientY = event.clientY
+      if (dragState.fromSupply) {
+        moveDragGhost(event.clientX, event.clientY)
+      } else {
+        piece.x = event.clientX - rect.left - dragState.offsetX
+        piece.y = event.clientY - rect.top - dragState.offsetY
+      }
+    }
+
     scheduleRedraw()
     sendPresence(pointer)
   })
@@ -885,6 +968,14 @@ function attachPointerListeners() {
         selectDiscardCard(currentDrag.cardId)
       } else {
         finishDiscardCardDrop(event, currentDrag)
+      }
+    }
+
+    if (currentDrag.type === PIECE_DRAG_TYPE) {
+      if (!currentDrag.moved) {
+        selectPiece(currentDrag.pieceId)
+      } else {
+        finishPieceDrop(event, currentDrag)
       }
     }
 
@@ -1069,6 +1160,44 @@ function startTableCardDrag(event, piece) {
   sendPresence(tablePointFromEvent(event), { force: true })
 }
 
+function startPieceDrag(event, piece, { fromSupply = false } = {}) {
+  if (!canManipulateComponents() || !canManipulatePiece(piece)) return
+  event.preventDefault()
+  event.stopPropagation()
+  selectPiece(piece.id)
+
+  if (piece.locked) {
+    scheduleRedraw()
+    return
+  }
+
+  const source = event.currentTarget
+  const rect = source.getBoundingClientRect()
+  const originRect = rectFromDomRect(rect)
+  const size = pieceSize(piece)
+  dragState = {
+    type: PIECE_DRAG_TYPE,
+    pieceId: piece.id,
+    fromSupply,
+    startX: event.clientX,
+    startY: event.clientY,
+    clientX: event.clientX,
+    clientY: event.clientY,
+    moved: false,
+    offsetX: Math.min(event.clientX - rect.left, size.width),
+    offsetY: Math.min(event.clientY - rect.top, size.height),
+    width: size.width,
+    height: size.height,
+    originRect,
+    originX: piece.x,
+    originY: piece.y,
+    originInSupply: piece.inSupply
+  }
+
+  if (fromSupply) createDragGhost(source, dragState)
+  sendPresence(tablePointFromEvent(event), { force: true })
+}
+
 function finishHandCardDrop(event, drag) {
   const zoneId = dropZoneFromPoint(event)
   const card = localHandCards().find(item => item.id === drag.cardId)
@@ -1220,6 +1349,60 @@ function finishTableCardDrop(event, drag) {
   if (positionWasClamped(raw, clamped)) {
     animateDraggedPieceToTablePosition(drag, clamped)
   }
+}
+
+function finishPieceDrop(event, drag) {
+  const piece = pieceById(drag.pieceId)
+  if (!piece) return
+
+  const point = tablePointFromEvent(event)
+  if (!point) {
+    returnPieceDragToOrigin(piece, drag)
+    return
+  }
+
+  const raw = {
+    x: point.x - drag.offsetX,
+    y: point.y - drag.offsetY
+  }
+  const clamped = clampPiecePosition(raw.x, raw.y, drag.width, drag.height)
+  piece.x = clamped.x
+  piece.y = clamped.y
+
+  const result = submitCommand(createCommand(COMMAND.PIECE_MOVE, {
+    pieceId: piece.id,
+    x: clamped.x,
+    y: clamped.y,
+    width: drag.width,
+    height: drag.height
+  }))
+
+  if (!result.ok) {
+    returnPieceDragToOrigin(piece, drag)
+    return
+  }
+
+  state.selectedPieceId = piece.id
+  removeDragGhost()
+
+  if (positionWasClamped(raw, clamped)) {
+    animateDraggedPieceToTablePosition(drag, clamped)
+  }
+}
+
+function returnPieceDragToOrigin(piece, drag) {
+  if (drag.fromSupply) {
+    returnDragGhostToOrigin(drag)
+    return
+  }
+
+  piece.x = drag.originX
+  piece.y = drag.originY
+  piece.inSupply = drag.originInSupply
+  animateDraggedPieceToTablePosition(drag, {
+    x: drag.originX ?? TABLE_PIECE_INSET,
+    y: drag.originY ?? TABLE_PIECE_INSET
+  })
 }
 
 function dropZoneFromPoint(event, skipPieceId = null) {
@@ -1436,6 +1619,24 @@ function tableCardTop(piece) {
   return remote?.y ?? piece.y
 }
 
+function pieceLeft(piece) {
+  if (dragState?.type === PIECE_DRAG_TYPE && dragState.pieceId === piece.id) {
+    if (dragState.returning) return dragState.snapLeft
+    if (!dragState.fromSupply) return dragState.clientX - dragState.offsetX
+  }
+
+  return piece.x ?? 0
+}
+
+function pieceTop(piece) {
+  if (dragState?.type === PIECE_DRAG_TYPE && dragState.pieceId === piece.id) {
+    if (dragState.returning) return dragState.snapTop
+    if (!dragState.fromSupply) return dragState.clientY - dragState.offsetY
+  }
+
+  return piece.y ?? 0
+}
+
 function clampPiecePosition(x, y, width, height) {
   return {
     x: clamp(x, TABLE_PIECE_INSET, TABLE_WIDTH - width - TABLE_PIECE_INSET),
@@ -1466,17 +1667,24 @@ function handleKeyDown(event) {
   if (!canManipulateComponents() && ['f', 'r', 'l', 'backspace'].includes(key)) return
 
   const piece = selectedTableCard()
+  const gamePiece = selectedPiece()
 
-  if (key === 'f' && piece) {
+  if (key === 'f' && gamePiece) {
+    submitCommand(createCommand(COMMAND.PIECE_FLIP, { pieceId: gamePiece.id }))
+  } else if (key === 'f' && piece) {
     submitCommand(createCommand(COMMAND.CARD_FLIP, { pieceId: piece.id }))
   }
 
-  if (key === 'r' && piece) {
+  if (key === 'r' && gamePiece) {
+    submitCommand(createCommand(COMMAND.PIECE_ROTATE, { pieceId: gamePiece.id }))
+  } else if (key === 'r' && piece) {
     submitCommand(createCommand(COMMAND.CARD_ROTATE, { pieceId: piece.id }))
   }
 
   if (key === 'l') {
-    if (piece) {
+    if (gamePiece) {
+      submitCommand(createCommand(COMMAND.PIECE_LOCK, { pieceId: gamePiece.id }))
+    } else if (piece) {
       submitCommand(createCommand(COMMAND.CARD_LOCK, { pieceId: piece.id }))
     } else if (state.selectedChipId) {
       const chip = chipById(state.selectedChipId)
@@ -1492,6 +1700,7 @@ function handleKeyDown(event) {
     submitCommand(createCommand(COMMAND.CHIP_RETURN, { chipId: chip.id }))
     state.selectedChipId = null
   }
+
 }
 
 function isTypingTarget(target) {
@@ -1520,7 +1729,9 @@ const App = s(({}, [], { doc }) => {
     s`meta`({ name: 'viewport', content: 'width=device-width, initial-scale=1' })
   ])
 
-  return AppShell(
+  return AppShell({
+    style: `grid-template-rows: 58px minmax(0, 1fr) ${featureEnabled('hands') ? '190px' : '0px'}`
+  },
     topBar(),
     MainContent(
       sidePanel(),
@@ -1529,18 +1740,20 @@ const App = s(({}, [], { doc }) => {
           'data-table-surface': 'true',
           'data-drop-zone': ZONE.TABLE,
           style: `--table-width: ${TABLE_WIDTH}px; --table-height: ${TABLE_HEIGHT}px`,
-          dom: attachPointerListeners
+          dom: attachPointerListeners,
+          onpointerdown: clearPieceSelectionFromTable
         },
           state.objects.map(object => tableObject({ key: object.id, object })),
-          remoteHands(),
-          state.tableCards.map(piece => tableCard({ key: piece.id, piece })),
-          state.chips.map(chip => tableChip({ key: chip.id, chip })),
-          remoteHandDrags(),
+          featureEnabled('remoteHands') && remoteHands(),
+          featureEnabled('cards') && state.tableCards.map(piece => tableCard({ key: piece.id, piece })),
+          featureEnabled('chips') && state.chips.map(chip => tableChip({ key: chip.id, chip })),
+          featureEnabled('polyominoes') && tablePieces(),
+          featureEnabled('remoteHands') && remoteHandDrags(),
           presenceLayer()
         )
       )
     ),
-    handBar(),
+    featureEnabled('hands') && handBar(),
     loginRequired && loginOverlay()
   )
 })
@@ -1551,16 +1764,25 @@ const topBar = s(() =>
       Mark(),
       TitleBlock(
         Title('Tabletime'),
-        Subtitle('Sequence reference prototype')
+        Subtitle(state.gameSubtitle || currentGameConfig().subtitle)
       )
     ),
     StatusStrip(
-      Pill('Freeform tabletop'),
+      Object.values(gameConfigs).map(config =>
+        SecondaryButton({
+          key: config.id,
+          disabled: state.gameId === config.id ? true : undefined,
+          title: `Open ${config.name}`,
+          onclick: () => changeGame(config.id)
+        }, config.name)
+      ),
+      Pill(currentGameConfig().name),
       Pill(`${networkStatus} / ${roomId}`),
       Pill(`${occupiedSeatCount()} / ${seatsForDisplay().length} seated`),
-      Pill(`${state.drawPile.length} deck`),
-      Pill(`${state.chips.length} chips`),
-      Pill(`${state.tableCards.length} loose cards`),
+      featureEnabled('deck') && Pill(`${state.drawPile.length} deck`),
+      featureEnabled('chips') && Pill(`${state.chips.length} chips`),
+      featureEnabled('cards') && Pill(`${state.tableCards.length} loose cards`),
+      featureEnabled('polyominoes') && Pill(`${state.pieces.length} pieces`),
       SecondaryButton({ onclick: () => resetPrototype({ confirm: true }) }, 'Reset')
     )
   )
@@ -1613,16 +1835,21 @@ const tableObject = s(({ object }) => {
       object.title,
       LockBadge(object.locked ? 'locked' : 'movable')
     ),
-    object.type === 'board' && sequenceBoard(),
+    object.type === 'board' && boardObject({ object }),
     object.type === 'deck' && deckObject(),
     object.type === 'discard' && discardObject(),
     object.type === 'supply' && supplyObject()
   )
 })
 
+const boardObject = s(({ object }) =>
+  object.boardKind === 'blokus' ? blokusBoard() : sequenceBoard()
+)
+
 const sequenceBoard = s(() =>
   BoardWrap({
-    'data-drop-zone': ZONE.BOARD
+    'data-drop-zone': ZONE.BOARD,
+    style: `--board-size: 10; --cell-size: 72px; --board-gap: 4px`
   },
     BoardGrid(
       sequenceSpaces.map(space => boardSpace({ key: space.id, space }))
@@ -1640,6 +1867,24 @@ const boardSpace = s(({ space }) => {
         CardRank({ style: `color: ${suitMeta(space.suit).color}` }, space.rank),
         CardSuit({ style: `color: ${suitMeta(space.suit).color}` }, suitGlyph(space.suit))
       )
+  )
+})
+
+const blokusBoard = s(() => {
+  const size = state.board?.size || 20
+  const cellSize = state.board?.cellSize || 26
+  const cornerIndexes = new Set([0, size - 1, size * (size - 1), size * size - 1])
+
+  return BoardWrap({
+    style: `--board-size: ${size}; --cell-size: ${cellSize}px; --board-gap: 2px`
+  },
+    BoardGrid(
+      Array.from({ length: size * size }, (_, index) => BoardCell({
+        key: `blokus-${index}`,
+        'data-board-kind': 'blokus',
+        'data-corner': cornerIndexes.has(index) ? 'true' : 'false'
+      }))
+    )
   )
 })
 
@@ -1663,6 +1908,38 @@ const tableChip = s(({ chip }) => {
     disabled: !canManipulate ? true : undefined,
     onpointerdown: event => startChipDrag(event, chip)
   })
+})
+
+const tablePieces = s(() =>
+  state.pieces
+    .filter(piece => piece.kind === 'polyomino')
+    .map(piece => tablePiece({ key: piece.id, piece }))
+)
+
+const tablePiece = s(({ piece }) => {
+  const size = pieceSize(piece)
+  const localDragging = dragState?.type === PIECE_DRAG_TYPE && dragState.pieceId === piece.id && !dragState.fromSupply
+  const canManipulate = canManipulatePiece(piece)
+  const restingTransition = 'width 180ms cubic-bezier(.2,.8,.2,1), height 180ms cubic-bezier(.2,.8,.2,1)'
+
+  return PolyominoPieceButton`
+    position ${localDragging ? 'fixed' : 'absolute'}
+    left ${pieceLeft(piece) + 'px'}
+    top ${pieceTop(piece) + 'px'}
+    z-index ${localDragging ? 60 : 7}
+    transition ${localDragging && dragState.returning ? SNAP_BACK_TRANSITION : restingTransition}
+    --piece-width ${size.width + 'px'}
+    --piece-height ${size.height + 'px'}
+  `({
+    'aria-label': `${pieceLabel(piece)} piece`,
+    'data-piece-id': piece.id,
+    'data-selected': state.selectedPieceId === piece.id ? 'true' : 'false',
+    'data-locked': piece.locked || !canManipulate ? 'true' : 'false',
+    disabled: !canManipulate ? true : undefined,
+    onpointerdown: event => startPieceDrag(event, piece)
+  },
+    polyominoVisual({ piece })
+  )
 })
 
 const tableCard = s(({ piece }) => {
@@ -1739,7 +2016,7 @@ const discardObject = s(() => {
 
 const supplyObject = s(() =>
   SupplyBody(
-    players.map(player =>
+    playersForCurrentGame().map(player =>
       SupplyRow({
         key: player.id,
         'data-no-drag': 'true'
@@ -1901,6 +2178,66 @@ function remoteHandReturnPosition(presence, drag) {
     x: targetRect.left - surfaceRect.left + (targetRect.width - width) / 2,
     y: targetRect.top - surfaceRect.top + (targetRect.height - height) / 2
   }
+}
+
+const polyominoVisual = s(({ piece }) => {
+  const cellSize = pieceCellSize()
+  return PolyominoShape({
+    style: `--piece-cell-size: ${cellSize}px; --piece-color: ${playerById(piece.playerId).color}`
+  },
+    transformedPieceCells(piece).map((cell, index) => PolyominoCell({
+      key: `${piece.id}-${index}`,
+      style: `--cell-x: ${cell.x}; --cell-y: ${cell.y}`
+    }))
+  )
+})
+
+function canManipulatePiece(piece) {
+  const seat = localSeat()
+  return Boolean(seat && piece?.playerId === seat.playerId)
+}
+
+function pieceLabel(piece) {
+  return `${playerById(piece.playerId).name} ${piece.name || 'piece'}`
+}
+
+function pieceCellSize() {
+  return Number(state.polyominoes?.cellSize) || 24
+}
+
+function pieceSize(piece) {
+  const cells = transformedPieceCells(piece)
+  const maxX = Math.max(0, ...cells.map(cell => cell.x))
+  const maxY = Math.max(0, ...cells.map(cell => cell.y))
+  const cellSize = pieceCellSize()
+  return {
+    width: (maxX + 1) * cellSize,
+    height: (maxY + 1) * cellSize
+  }
+}
+
+function transformedPieceCells(piece) {
+  const rotation = normalizedQuarterTurn(piece.rotation)
+  const raw = (piece.cells || []).map(cell => {
+    let x = Number(cell.x) || 0
+    let y = Number(cell.y) || 0
+    if (piece.flipped) x = -x
+
+    for (let index = 0; index < rotation; index++) {
+      ;[x, y] = [-y, x]
+    }
+
+    return { x, y }
+  })
+
+  const minX = Math.min(0, ...raw.map(cell => cell.x))
+  const minY = Math.min(0, ...raw.map(cell => cell.y))
+  return raw.map(cell => ({ x: cell.x - minX, y: cell.y - minY }))
+}
+
+function normalizedQuarterTurn(value) {
+  const turn = Number(value) || 0
+  return ((turn % 4) + 4) % 4
 }
 
 const compactCard = s(({ card, selected = false, disabled = false, onpointerdown }) =>

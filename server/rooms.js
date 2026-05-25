@@ -205,6 +205,12 @@ function snapshotForClient(room, client = null) {
   const seat = client ? clientSeat(room, client) : null
   const visibleHands = {}
 
+  if (room.state.features?.hands === false) {
+    snapshot.handsByPlayerId = {}
+    delete snapshot.hand
+    return snapshot
+  }
+
   for (const occupiedSeat of occupiedSeats(room.state)) {
     const hand = Array.isArray(room.state.handsByPlayerId?.[occupiedSeat.playerId])
       ? room.state.handsByPlayerId[occupiedSeat.playerId]
