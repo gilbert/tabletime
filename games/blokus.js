@@ -12,34 +12,34 @@ export const BLOKUS_PIECE_CELL_SIZE = 24
 const playerLayouts = {
   blue: { x: 36, y: 58 },
   gold: { x: 1188, y: 58 },
-  red: { x: 36, y: 710 },
-  green: { x: 1188, y: 710 }
+  red: { x: 36, y: 470 },
+  green: { x: 1188, y: 470 }
 }
 
 const PIECE_LAYOUT_UNIT = BLOKUS_PIECE_CELL_SIZE
 
 const pieceLayout = [
-  [0, 0, 0],
-  [0, 2, 0],
-  [2, 0, 3],
-  [5, 0, 0],
-  [10, 0, 0],
-  [15, 0, 0],
-  [4, 4, 1],
-  [8, 4, 0],
-  [12, 4, 0],
-  [16, 4, 1],
-  [20, 4, 0],
-  [0, 8, 0],
-  [4, 8, 0],
-  [8, 8, 1],
-  [12, 8, 0],
-  [16, 8, 1],
-  [0, 12, 0],
-  [4, 12, 0],
-  [8, 12, 1],
-  [12, 12, 0],
-  [16, 12, 0]
+  [0, 0, 0],      // 1 piece
+  [0, 2, 0],      // 2 piece
+  [3, 0, 3],      // 3 straight
+  [5, 0, 0],      // 3 bent
+  [0, 4, 0],      // 4 straight
+  [17, 0, 0],     // 4 block
+  [10, 0, 0],     // 4 T
+  [8, 0, 0],      // 4 knight
+  [13, 1, 0, 1],  // 4 Z
+  [5, 4, 0],      // 5 straight
+  [15, 3, 3],     // 5 knight
+  [0, 6, 0],
+  [4, 6, 0],
+  [8, 6, 1],
+  [16, 9, 3, 1],  // 5 Z <--
+  [16, 6, 1],
+  [12, 5, 0],     // 5 bazooka <--
+  [4, 10, 0],
+  [8, 10, 1],
+  [12, 10, 0],
+  [0, 10, 0, 1]   // 5 pointy <--
 ]
 
 const pieceDefinitions = [
@@ -129,7 +129,7 @@ function makeInitialPieces() {
   for (const player of blokusPlayers) {
     const layout = playerLayouts[player.id]
     for (const [index, definition] of pieceDefinitions.entries()) {
-      const [gridX, gridY, rotation = 0] = pieceLayout[index]
+      const [gridX, gridY, rotation = 0, flipped = 0] = pieceLayout[index]
       pieces.push({
         id: `piece-${player.id}-${definition.id}`,
         kind: 'polyomino',
@@ -140,7 +140,7 @@ function makeInitialPieces() {
         x: layout.x + gridX * PIECE_LAYOUT_UNIT,
         y: layout.y + gridY * PIECE_LAYOUT_UNIT,
         rotation,
-        flipped: false,
+        flipped: flipped === 1,
         locked: false,
         inSupply: false,
         source: 'table'

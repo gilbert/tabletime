@@ -55,6 +55,7 @@ t`blokus setup disables hands and creates polyomino supplies`(() => {
   assert(state.pieces.length === 84, 'Blokus should create 21 polyominoes for each of 4 players.')
   assert(state.pieces.every(piece => piece.inSupply === false && Number.isFinite(piece.x) && Number.isFinite(piece.y)), 'Blokus pieces should start on the table.')
   assert(state.pieces.some(piece => piece.rotation > 0), 'Blokus layout should support initial piece rotation.')
+  assert(state.pieces.some(piece => piece.flipped), 'Blokus layout should support initial piece flipping.')
 
   joinSeat(state, 'blue', alice)
   joinSeat(state, 'gold', bob)
